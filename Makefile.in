@@ -990,6 +990,35 @@ $(OBJ)/.eac-i386-build:
 endif
 
 ##
+## xgameruntime
+##
+
+# The C++ System implementation has its own upstream CMake build. It uses the
+# same SDK and Wine host tools as the rest of Proton, not a host-built DLL.
+XGAMERUNTIME_CMAKE_ARGS = \
+  -DENABLE_TESTS=OFF \
+  -DNEXUS_WINE_SOURCE="$(WINE_SRC)" \
+  -DWIDL="$(WINE_$(HOST_ARCH)_OBJ)/tools/widl/widl" \
+  -DNEXUS_WINE_BUILTIN=ON \
+  -DNEXUS_WINEBUILD="$(WINE_$(HOST_ARCH)_OBJ)/tools/winebuild/winebuild"
+
+XGAMERUNTIME_i386_CMAKE_ARGS = \
+  -DCMAKE_TOOLCHAIN_FILE="$(XGAMERUNTIME_SRC)/win32-target.cmake" \
+  -DCMAKE_INSTALL_LIBDIR=lib/wine/i386-windows
+XGAMERUNTIME_x86_64_CMAKE_ARGS = \
+  -DCMAKE_TOOLCHAIN_FILE="$(XGAMERUNTIME_SRC)/win64-target.cmake" \
+  -DCMAKE_INSTALL_LIBDIR=lib/wine/x86_64-windows
+
+$(eval $(call rules-source,xgameruntime,$(SRCDIR)/wine/dlls/xgameruntime))
+$(eval $(call rules-cmake,xgameruntime,i386,windows))
+$(eval $(call rules-cmake,xgameruntime,x86_64,windows))
+
+# The host-tool barrier also completes Wine's generated NLS dependencies.
+$(OBJ)/.xgameruntime-i386-configure $(OBJ)/.xgameruntime-x86_64-configure: $(OBJ)/.wine-$(HOST_ARCH)-tools
+
+default_pfx: xgameruntime
+
+##
 ## Windows Symbol Store creation
 ##
 
@@ -1537,6 +1566,11 @@ redist: all
 
 .PHONY: module32 module64 module
 
+ifeq ($(module),xgameruntime)
+module32: xgameruntime-i386-build
+module64: xgameruntime-x86_64-build
+module: module32 module64
+else
 module32: | all-source wine-i386-configure
 	+$(MAKE) -j$(J) $(filter -j%,$(MAKEFLAGS)) $(MFLAGS) $(MAKEOVERRIDES) -C $(WINE_i386_OBJ)/dlls/$(module)
 
@@ -1545,6 +1579,7 @@ module64: | all-source wine-x86_64-configure
 
 module: | all-source wine-configure
 module: module32 module64
+endif
 
 ###############################
 else # outside of the container
