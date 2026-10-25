@@ -19,8 +19,9 @@ let passed=false;const results=[];
 async function execute(name,exe,args=[],overrides={},minimum=1){
   const r=spawnSync(engine,[exe,...args],{cwd:root,env:{...env,...overrides},encoding:'utf8',timeout:120000,maxBuffer:4*1024*1024});
   const output=(r.stdout||'')+(r.stderr||'');await fs.writeFile(root+'/'+name+'.log',output,{flag:'wx',mode:0o600});
-  const summaries=[...output.matchAll(/(?:^|\n)CHECKS (\d+) FAILURES (\d+)/g),...output.matchAll(/(?:^|\n)CHECKS (?:appstate|appstate-source|appconstrained|appconstrained-source|appmodel-(?:32|64)) checks=(\d+) failures=(\d+)/g)];
-  const ok=r.status===0&&!r.error&&!r.signal&&summaries.length>0&&summaries.every(m=>+m[1]>=minimum&&+m[2]===0)&&!/^FAIL /m.test(output);
+  const summaries=[...output.matchAll(/(?:^|\n)CHECKS (\d+) FAILURES (\d+)/g),...output.matchAll(/(?:^|\n)CHECKS (?:appstate|appstate-source|appconstrained|appconstrained-source|appmodel-(?:32|64)) checks=(\d+) failures=(\d+)/g),...output.matchAll(/(?:^|\n)PACKAGE_ID checks=(\d+) failures=(\d+)/g)];
+  const packageComplete=!name.startsWith('package-id-')||(summaries.length===3&&summaries.every((m,i)=>+m[1]>=[2478,6,24][i]));
+  const ok=r.status===0&&!r.error&&!r.signal&&packageComplete&&summaries.length>0&&summaries.every(m=>+m[1]>=minimum&&+m[2]===0)&&!/^FAIL /m.test(output);
   results.push({name,status:r.status,signal:r.signal,checks:summaries.map(x=>+x[1]),passed:ok});
   if(!ok)throw Error('Native contract failed: '+name+'; '+root);
   console.log(name+' PASS');
@@ -32,7 +33,9 @@ try{
   for(const [name,min]of [['appstate',191215],['appstate-source',191231],['appconstrained',191215],['appconstrained-source',191231],['hlsl-state-keywords',320],['winrt-json',9]])await execute(name,tests+'/'+name+'-probe.exe',[],{},min);
   for(const [kind,min]of [['vector',22209],['queue',201483],['yield',1014]])for(const bits of [64,32])await execute('concrt-'+kind+'-'+bits,tests+'/concrt-'+kind+'-'+bits+'-probe.exe',[],{},min);
   for(const bits of [64,32]){
+    await execute('crypto-'+bits,tests+'/crypto-'+bits+'-probe.exe',[],{},40);
     await execute('appmodel-'+bits,tests+'/appmodel-'+bits+'-probe.exe',[],{},42);
+    await execute('package-id-'+bits,tests+'/package-id-'+bits+'-probe.exe');
     const run=async(exe,args,timeout=60000,overrides={})=>{const r=spawnSync(exe,args,{cwd:root,env:{...env,...overrides},encoding:'utf8',timeout,maxBuffer:1024*1024});return {code:r.status,timedOut:!!r.error||!!r.signal,output:(r.stdout||'')+(r.stderr||'')};};
     const aliases=await runAppmodelAliases({wine:engine,tests,root,bits,run});
     await fs.writeFile(root+'/appmodel-'+bits+'-aliases.log',aliases.output,{flag:'wx',mode:0o600});
