@@ -4,6 +4,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {project,readJson,sourceEnvironment} from '../inputs.mjs';
 import {fileHash,treeHash,assertPortable,validateGateResults} from './provenance.mjs';
+import {prepareValidationTools,validationProcessOutput} from './validation-tools.mjs';
 const [outputArg,fixturesArg,validationArg]=process.argv.slice(2);
 if(process.argv.length!==5)throw Error('BUILD_OUTPUT FIXTURES NEW_VALIDATION required');
 const output=await fs.realpath(outputArg),fixtures=await fs.realpath(fixturesArg),work=path.resolve(validationArg);
@@ -20,11 +21,12 @@ for(const name of ['GCC-runtime-copyright','MinGW-runtime-copyright','libxml2-CO
 }
 await assertPortable(runtime);
 const proof={schema:1,scope:'exact coherent runtime, synthetic offline gates only',realGameTest:false,realAccountTest:false,realCloudTest:false,stableApproved:false,graph:built.graph,runtime,builtSha256:await fileHash(output+'/built.json'),treeSha256:await treeHash(runtime),fixtureProofSha256:await fileHash(fixtures+'/fixtures.json'),results:[],bindings:{}};
-const env={...sourceEnvironment(),PATH:files+'/bin:'+process.env.PATH,LD_LIBRARY_PATH:files+'/lib/x86_64-linux-gnu:'+files+'/lib/i386-linux-gnu:'+files+'/lib',PYTHONDONTWRITEBYTECODE:'1'};
+const tools=await prepareValidationTools(files,work+'/candidate-tools');
+const env={...sourceEnvironment(),PATH:tools+':'+files+'/bin:'+process.env.PATH,LD_LIBRARY_PATH:files+'/lib/x86_64-linux-gnu:'+files+'/lib/i386-linux-gnu:'+files+'/lib',PYTHONDONTWRITEBYTECODE:'1'};
 let passed=false;
 async function execute(name,command,args){
   const r=spawnSync(command,args,{cwd:work,env,encoding:'utf8',timeout:600000,maxBuffer:8*1024*1024});
-  const log=work+'/'+name+'.log';await fs.writeFile(log,(r.stdout||'')+(r.stderr||''),{flag:'wx',mode:0o600});
+  const log=work+'/'+name+'.log';await fs.writeFile(log,validationProcessOutput(r),{flag:'wx',mode:0o600});
   proof.results.push({name,status:r.status,signal:r.signal,error:r.error?.message,log,sha256:await fileHash(log)});
   if(r.status!==0||r.signal||r.error)throw Error('Candidate gate failed: '+name+'; '+log);
   console.log(name+' PASS');
