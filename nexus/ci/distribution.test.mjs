@@ -74,10 +74,23 @@ test('both ABI crypto probes are compiled, executed and required in native valid
   const probe=fs.readFileSync(project+'/runtime-tests/crypto-probe.c','utf8');
   assert.ok(fixture.includes("for(const bits of [64,32])compile('crypto-'+bits+'-probe.exe','crypto-probe.c',['-Wextra','-Werror','-lncrypt','-lbcrypt'],bits)"));
   assert.ok(contracts.includes("await execute('crypto-'+bits,tests+'/crypto-'+bits+'-probe.exe',[],{},40)"));
-  assert.ok(validator.includes('wine.results.length!==18'));
+  assert.ok(validator.includes('wine.results.length!==20'));
   for(const name of ['NCryptCreatePersistedKey','NCryptSignHash','NCryptVerifySignature','BCryptSignHash','BCryptVerifySignature','BCRYPT_ECDSA_P521_ALGORITHM','BCRYPT_RSA_ALGORITHM'])
     assert.ok(probe.includes(name),name);
   assert.doesNotMatch(probe,/todo_wine|win_skip|XUser|XGameSave|XODUS/);
+});
+test('both ABI PackageId lifetimes and packaged/unpackaged results are mandatory',()=>{
+  const fixture=fs.readFileSync(project+'/ci/build-fixtures.mjs','utf8');
+  const contracts=fs.readFileSync(project+'/ci/wine-contracts.mjs','utf8');
+  const validator=fs.readFileSync(project+'/ci/validate-runtime.mjs','utf8');
+  const probe=fs.readFileSync(project+'/runtime-tests/package-id-probe.c','utf8');
+  assert.ok(fixture.includes("compile('package-id-'+bits+'-probe.exe','package-id-probe.c'"));
+  assert.ok(fixture.includes("obj+'/dlls/kernelbase/'+arch+'-windows/libkernelbase.a'"));
+  assert.ok(contracts.includes("await execute('package-id-'+bits,tests+'/package-id-'+bits+'-probe.exe')"));
+  for(const text of [contracts,validator])assert.ok(text.includes('[2478,6,24]'));
+  assert.ok(validator.includes("r.name==='package-id-'+bits"));
+  for(const api of ['IPackageStatics_get_Current','IPackage_get_Id','IPackageId_get_Name','APPMODEL_ERROR_NO_PACKAGE','CreateThread','IPackageId_Release'])assert.ok(probe.includes(api),api);
+  assert.doesNotMatch(probe,/todo_wine|win_skip|XUser|XGameSave/);
 });
 test('packaging rejects all non-main and untrusted contexts before accessing a candidate',()=>{
   for(const ref of ['refs/heads/develop','refs/pull/1/merge','refs/tags/test']){
