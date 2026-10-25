@@ -27,6 +27,15 @@ test('source checks include distribution policies without packaging or full SDK 
   const text=fs.readFileSync(path.join(repository,'.github/workflows/nexus-source.yml'),'utf8');
   assert.ok(text.includes('nexus/ci/*.test.mjs'));assert.doesNotMatch(text,/build-fixtures|validate-runtime|package-runtime|cache\/save|upload-artifact/);
 });
+test('Ubuntu 24 validation installs and checks i386 crypto and fonts before compiling',()=>{
+  const text=fs.readFileSync(path.join(repository,'.github/workflows/nexus-runtime.yml'),'utf8');
+  const runtime=text.slice(text.indexOf('  runtime:'));
+  assert.match(runtime,/runs-on: ubuntu-24\.04/);
+  assert.ok(runtime.indexOf('dpkg --add-architecture i386')<runtime.indexOf('Acquire::https::Timeout=30 update'));
+  assert.match(runtime,/libgnutls30t64:i386 libfreetype6:i386/);
+  assert.ok(runtime.indexOf('libgnutls30t64:i386')<runtime.indexOf('validation-dependencies.mjs'));
+  assert.ok(runtime.indexOf('validation-dependencies.mjs')<runtime.indexOf('Build coherent pinned SDK runtime'));
+});
 test('runner paths are initialized in a step, never in the restricted job-level environment',()=>{
   const text=fs.readFileSync(path.join(repository,'.github/workflows/nexus-runtime.yml'),'utf8');
   const jobEnv=text.slice(text.indexOf('    env:'),text.indexOf('    steps:',text.indexOf('    env:')));
