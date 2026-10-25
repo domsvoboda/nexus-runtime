@@ -5,6 +5,7 @@ import {project,repository,run,readJson,sha256,verifyInputs,verifySourceGraph} f
 import {verifyAuxiliary} from './auxiliary.mjs';
 import {sdkContainerOption,sdkBuildJobs,sdkBuildPlan,verifySdkResumeMakefile} from './sdk-build-plan.mjs';
 import {assembleRuntime} from './assemble-runtime.mjs';
+import {requireShaderVersion} from './shader-version.mjs';
 const [auxArg,workArg,outputArg,resumeArg]=process.argv.slice(2);
 if(!auxArg||!workArg||!outputArg||process.argv.length>6||resumeArg&&resumeArg!=='--resume')throw Error('Usage: build-runtime.mjs AUXILIARY NEW_WORK NEW_OUTPUT [--resume]');
 if(process.env.GITHUB_REF&&process.env.GITHUB_REF!=='refs/heads/main')throw Error('Distribution builds are main-only');
@@ -21,7 +22,7 @@ if(!resume){
   name='nexus-runtime-11.0-experimental-g'+graph.proton.slice(0,8);
   epoch=run('git',['log','-1','--format=%ct'],source,{capture:true}).trim();
   const configure=await fs.readFile(path.join(shader,'configure.ac'),'utf8');
-  if(!configure.includes('[vkd3d], ['+inputs.shader.version+']'))throw Error('Pinned shader source version mismatch');
+  requireShaderVersion(configure,inputs.shader.version);
   run('git',['apply','--check',path.join(project,inputs.shader.file)],shader);
   run('git',['apply',path.join(project,inputs.shader.file)],shader);
   await fs.mkdir(path.join(wine,'include/nghttp2'));
@@ -42,6 +43,13 @@ for(const [directory,expected]of [[source,graph.proton],[wine,graph.wine],[path.
   if(run('git',['rev-parse','HEAD'],directory,{capture:true}).trim()!==expected||run('git',['diff','--ignore-submodules=all','HEAD'],directory,{capture:true}).trim())throw Error('Prepared fork source changed');
 }
 for(const [module,expected]of Object.entries(graph.modules))if(run('git',['rev-parse','HEAD'],path.join(source,module),{capture:true}).trim()!==expected)throw Error('Prepared graphics source changed');
+for(const entry of graph.submodules){
+  const match=/^ ([a-f0-9]{40}) (\S+)/.exec(entry);
+  if(!match)throw Error('Malformed prepared source graph');
+  const directory=path.join(source,match[2]);
+  if(run('git',['rev-parse','HEAD'],directory,{capture:true}).trim()!==match[1])throw Error('Prepared dependency checkout changed: '+match[2]);
+  if(match[2]!=='vkd3d'&&run('git',['diff','--ignore-submodules=all','HEAD'],directory,{capture:true}).trim())throw Error('Prepared dependency source changed: '+match[2]);
+}
 const changed=run('git',['diff','--name-only','HEAD'],shader,{capture:true}).trim().split('\n').filter(Boolean).sort();
 if(changed.join(',')!==Object.keys(inputs.shader.expectedSources).sort().join(','))throw Error('Unexpected shader changes');
 for(const [file,expected]of Object.entries(inputs.shader.expectedSources))if(sha256(await fs.readFile(path.join(shader,file)))!==expected)throw Error('Shader source checksum mismatch');
