@@ -27,6 +27,15 @@ test('source checks include distribution policies without packaging or full SDK 
   const text=fs.readFileSync(path.join(repository,'.github/workflows/nexus-source.yml'),'utf8');
   assert.ok(text.includes('nexus/ci/*.test.mjs'));assert.doesNotMatch(text,/build-fixtures|validate-runtime|package-runtime|cache\/save|upload-artifact/);
 });
+test('runner paths are initialized in a step, never in the restricted job-level environment',()=>{
+  const text=fs.readFileSync(path.join(repository,'.github/workflows/nexus-runtime.yml'),'utf8');
+  const jobEnv=text.slice(text.indexOf('    env:'),text.indexOf('    steps:',text.indexOf('    env:')));
+  assert.doesNotMatch(jobEnv,/runner\./);
+  assert.match(text,/CCACHE_DIR=%s\/nexus-ccache/);assert.match(text,/CARGO_HOME=%s\/nexus-cargo/);
+  const checks=fs.readFileSync(path.join(repository,'.github/workflows/nexus-source.yml'),'utf8');
+  assert.match(checks,/actionlint\/releases\/download\/v1\.7\.12/);
+  assert.match(checks,/8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8/);
+});
 test('SDK fixture compilation uses real matching Wine and a private writable cache',()=>{
   const text=fs.readFileSync(project+'/ci/build-fixtures.mjs','utf8');
   assert.match(text,/src=\$\{built\.runtime\},dst=\/engine,readonly/);

@@ -42,11 +42,9 @@ jobs:
     env:
       NEXUS_CONTAINER_ENGINE: docker
       NEXUS_BUILD_JOBS: '4'
-      CCACHE_DIR: ${{ runner.temp }}/nexus-ccache
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_MAXSIZE: 3G
       CCACHE_COMPILERCHECK: content
-      CARGO_HOME: ${{ runner.temp }}/nexus-cargo
       PYTHONDONTWRITEBYTECODE: '1'
       XZ_OPT: '-T2'
     steps:
@@ -62,6 +60,9 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           sudo rm -rf -- /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost
           df -h "$RUNNER_TEMP"
+      - name: Initialize runner-local cache directories
+        run: |
+          printf 'CCACHE_DIR=%s/nexus-ccache\nCARGO_HOME=%s/nexus-cargo\n' "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: Install bounded offline validation prerequisites
         timeout-minutes: 15
         run: |
