@@ -1,0 +1,137 @@
+name: Nexus runtime candidate
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: runtime-candidate-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  auxiliary:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install bounded portable auxiliary toolchain
+        timeout-minutes: 15
+        run: |
+          sudo "$(command -v node)" nexus/ci/ubuntu-mirror.mjs
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 install -y --no-install-recommends build-essential cmake gcc-mingw-w64-x86-64 gcc-mingw-w64-i686 curl xz-utils
+      - run: node --test nexus/runtime-compat/*.test.mjs
+      - run: node nexus/build-auxiliary.mjs --work "$RUNNER_TEMP/nexus-auxiliary"
+      - name: Archive exact auxiliary source and binaries
+        run: tar --exclude=.git -cJf "$RUNNER_TEMP/auxiliary.tar.xz" -C "$RUNNER_TEMP" nexus-auxiliary
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexus-auxiliary
+          path: ${{ runner.temp }}/auxiliary.tar.xz
+          if-no-files-found: error
+          retention-days: 7
+  runtime:
+    if: github.ref == 'refs/heads/main'
+    needs: auxiliary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      NEXUS_CONTAINER_ENGINE: docker
+      NEXUS_BUILD_JOBS: '4'
+      CCACHE_DIR: ${{ runner.temp }}/nexus-ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 3G
+      CCACHE_COMPILERCHECK: content
+      CARGO_HOME: ${{ runner.temp }}/nexus-cargo
+      PYTHONDONTWRITEBYTECODE: '1'
+      XZ_OPT: '-T2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Free only unused preinstalled hosted-runner SDKs
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          sudo rm -rf -- /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          df -h "$RUNNER_TEMP"
+      - name: Install bounded offline validation prerequisites
+        timeout-minutes: 15
+        run: |
+          sudo "$(command -v node)" nexus/ci/ubuntu-mirror.mjs
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 install -y --no-install-recommends build-essential cmake ccache gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 gcc-mingw-w64-i686 g++-mingw-w64-i686 rsync file curl xz-utils flex bison autoconf automake libtool libjson-perl wine64-tools pkg-config python3 openssl xvfb xauth libfreetype-dev libgnutls28-dev libvulkan1 mesa-vulkan-drivers libx11-6 libgstreamer1.0-dev libgstreamer-plugins-base1.0-0
+          echo /usr/lib/wine >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@v4
+        with:
+          name: nexus-auxiliary
+          path: ${{ runner.temp }}
+      - run: tar -xJf "$RUNNER_TEMP/auxiliary.tar.xz" -C "$RUNNER_TEMP"
+      - name: Check exact clean source and build policy
+        run: |
+          node nexus/check-source.mjs
+          node --test nexus/*.test.mjs nexus/tests/*.test.mjs nexus/ci/*.test.mjs nexus/runtime-compat/*.test.mjs
+      - id: cache-plan
+        run: node nexus/ci/cache-plan.mjs
+      - uses: actions/cache/restore@v4
+        id: compiler-cache
+        with:
+          path: ${{ runner.temp }}/nexus-ccache
+          key: ${{ steps.cache-plan.outputs.key }}
+          restore-keys: ${{ steps.cache-plan.outputs.restore-prefix }}
+      - name: Build coherent pinned SDK runtime
+        id: compile
+        run: node nexus/build-runtime.mjs "$RUNNER_TEMP/nexus-auxiliary" "$RUNNER_TEMP/nexus-work" "$RUNNER_TEMP/nexus-output"
+      - name: Save bounded compiler cache even after a compile failure
+        if: always() && !cancelled() && steps.compiler-cache.outcome == 'success' && steps.compiler-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/nexus-ccache
+          key: ${{ steps.cache-plan.outputs.key }}
+      - name: Report actual compiler cache statistics
+        if: always() && !cancelled() && steps.compile.outcome != 'skipped'
+        run: ccache --show-stats
+      - name: Compile fresh synthetic fixtures in the same pinned SDK
+        run: node nexus/ci/build-fixtures.mjs "$RUNNER_TEMP/nexus-output" "$RUNNER_TEMP/nexus-fixtures"
+      - name: Validate both ABIs, authentication, saves, DLC, HTTP, media and graphics
+        run: xvfb-run -a node nexus/ci/validate-runtime.mjs "$RUNNER_TEMP/nexus-output" "$RUNNER_TEMP/nexus-fixtures" "$RUNNER_TEMP/nexus-validation"
+      - name: Package validated bytes and corresponding source only
+        run: node nexus/ci/package-runtime.mjs "$RUNNER_TEMP/nexus-output" "$RUNNER_TEMP/nexus-validation"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexus-runtime
+          path: |
+            ${{ runner.temp }}/nexus-output/*.tar.xz
+            ${{ runner.temp }}/nexus-output/*.sha512sum
+            ${{ runner.temp }}/nexus-output/candidate.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain synthetic test evidence without prefixes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-validation
+          path: |
+            ${{ runner.temp }}/nexus-validation/*.json
+            ${{ runner.temp }}/nexus-validation/*.log
+            ${{ runner.temp }}/nexus-validation/win64/nexus-*/*.json
+            ${{ runner.temp }}/nexus-validation/win64/nexus-*/*.log
+            ${{ runner.temp }}/nexus-validation/win32/nexus-*/*.json
+            ${{ runner.temp }}/nexus-validation/win32/nexus-*/*.log
+            ${{ runner.temp }}/nexus-validation/wine-contract-*/*.json
+            ${{ runner.temp }}/nexus-validation/wine-contract-*/*.log
+            ${{ runner.temp }}/nexus-validation/runtime-http2-*/*.json
+            ${{ runner.temp }}/nexus-validation/runtime-http2-*/*.log
+            ${{ runner.temp }}/nexus-validation/runtime-dxvk-*/*.json
+            ${{ runner.temp }}/nexus-validation/runtime-dxvk-*/*.log
+            ${{ runner.temp }}/nexus-validation/media/results.json
+            ${{ runner.temp }}/nexus-fixtures/fixtures.json
+            ${{ runner.temp }}/nexus-output/built.json
+          retention-days: 7
