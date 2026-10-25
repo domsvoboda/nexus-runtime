@@ -32,6 +32,7 @@ try{
   for(const [name,min]of [['appstate',191215],['appstate-source',191231],['appconstrained',191215],['appconstrained-source',191231],['hlsl-state-keywords',320],['winrt-json',9]])await execute(name,tests+'/'+name+'-probe.exe',[],{},min);
   for(const [kind,min]of [['vector',22209],['queue',201483],['yield',1014]])for(const bits of [64,32])await execute('concrt-'+kind+'-'+bits,tests+'/concrt-'+kind+'-'+bits+'-probe.exe',[],{},min);
   for(const bits of [64,32]){
+    await execute('crypto-'+bits,tests+'/crypto-'+bits+'-probe.exe',[],{},40);
     await execute('appmodel-'+bits,tests+'/appmodel-'+bits+'-probe.exe',[],{},42);
     const run=async(exe,args,timeout=60000,overrides={})=>{const r=spawnSync(exe,args,{cwd:root,env:{...env,...overrides},encoding:'utf8',timeout,maxBuffer:1024*1024});return {code:r.status,timedOut:!!r.error||!!r.signal,output:(r.stdout||'')+(r.stderr||'')};};
     const aliases=await runAppmodelAliases({wine:engine,tests,root,bits,run});

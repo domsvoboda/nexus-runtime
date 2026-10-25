@@ -38,6 +38,7 @@ compile('hlsl-state-keywords-probe.exe','hlsl-state-keywords-probe.c',['-std=c11
 compile('winrt-json-probe.exe','winrt-json-probe.c',['-lruntimeobject'],64,true);
 for(const kind of ['vector','queue','yield'])for(const bits of [64,32])compile('concrt-'+kind+'-'+bits+'-probe.exe','concrt-'+kind+'-probe.c',['-Wextra','-Werror'],bits);
 for(const bits of [64,32])compile('appmodel-'+bits+'-probe.exe','appmodel-probe.c',['-Wextra','-Werror','-municode'],bits);
+for(const bits of [64,32])compile('crypto-'+bits+'-probe.exe','crypto-probe.c',['-Wextra','-Werror','-lncrypt','-lbcrypt'],bits);
 const folder=native+'/playfab-folder';await fs.mkdir(folder,{recursive:true});
 const definition=(await fs.readFile(project+'/runtime-compat/playfab-save-folder.def','utf8')).replace(/^(PF\w+)(?:=\S+)? @(\d+)$/gm,(_,name,ordinal)=>name+(name==='PFGameSaveFilesInitialize'?'':'=probe_stub')+' @'+ordinal);
 try{await fs.writeFile(folder+'/fixture.def',definition,{flag:'wx'});}catch(e){if(e.code!=='EEXIST'||await fs.readFile(folder+'/fixture.def','utf8')!==definition)throw e;}
