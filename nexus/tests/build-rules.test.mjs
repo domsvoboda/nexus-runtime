@@ -22,7 +22,7 @@ function fixture(barrier){
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),'nexus-proton-rules-'));
     const src=path.join(dir,'source/wine/dlls/xgameruntime');
     const obj=path.join(dir,'obj');fs.mkdirSync(src,{recursive:true});fs.mkdirSync(obj);
-    fs.writeFileSync(path.join(src,'fixture.cpp'),'extern "C" __declspec(dllexport) int fixture_value() { return 42; }\n');
+    fs.writeFileSync(path.join(src,'fixture.cpp'),'#ifndef NDEBUG\n#error "xgameruntime must build without debug assertions"\n#endif\nextern "C" __declspec(dllexport) int fixture_value() { return 42; }\n');
     fs.writeFileSync(path.join(src,'CMakeLists.txt'),`cmake_minimum_required(VERSION 3.20)
 project(make_graph_fixture LANGUAGES CXX)
 if(NOT EXISTS "\${WIDL}" OR NOT EXISTS "\${NEXUS_WINEBUILD}")

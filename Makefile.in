@@ -1009,6 +1009,10 @@ XGAMERUNTIME_x86_64_CMAKE_ARGS = \
   -DCMAKE_TOOLCHAIN_FILE="$(XGAMERUNTIME_SRC)/win64-target.cmake" \
   -DCMAKE_INSTALL_LIBDIR=lib/wine/x86_64-windows
 
+# Release build: the Windows runtime ships without debug assertions, and games
+# rely on that. CMake's "plain" build type would otherwise keep assert() live.
+XGAMERUNTIME_CFLAGS = -DNDEBUG
+
 $(eval $(call rules-source,xgameruntime,$(SRCDIR)/wine/dlls/xgameruntime))
 $(eval $(call rules-cmake,xgameruntime,i386,windows))
 $(eval $(call rules-cmake,xgameruntime,x86_64,windows))
