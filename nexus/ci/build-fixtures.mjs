@@ -41,6 +41,7 @@ for(const bits of [64,32])compile('appmodel-'+bits+'-probe.exe','appmodel-probe.
 for(const bits of [64,32]){
   const arch=bits===64?'x86_64':'i386',obj=sdkBuild+'/obj-wine-'+arch;
   compile('package-id-'+bits+'-probe.exe','package-id-probe.c',['-Wextra','-Werror','-municode',obj+'/dlls/combase/'+arch+'-windows/libcombase.a',obj+'/dlls/kernelbase/'+arch+'-windows/libkernelbase.a','-lole32'],bits,true);
+  compile('applicationdata-'+bits+'-probe.exe','applicationdata-probe.c',['-Wextra','-Werror','-municode',obj+'/dlls/combase/'+arch+'-windows/libcombase.a',obj+'/dlls/kernelbase/'+arch+'-windows/libkernelbase.a','-lole32'],bits,true);
 }
 for(const bits of [64,32])compile('crypto-'+bits+'-probe.exe','crypto-probe.c',['-Wextra','-Werror','-lncrypt','-lbcrypt'],bits);
 const folder=native+'/playfab-folder';await fs.mkdir(folder,{recursive:true});
