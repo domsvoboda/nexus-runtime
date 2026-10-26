@@ -74,7 +74,7 @@ test('both ABI crypto probes are compiled, executed and required in native valid
   const probe=fs.readFileSync(project+'/runtime-tests/crypto-probe.c','utf8');
   assert.ok(fixture.includes("for(const bits of [64,32])compile('crypto-'+bits+'-probe.exe','crypto-probe.c',['-Wextra','-Werror','-lncrypt','-lbcrypt'],bits)"));
   assert.ok(contracts.includes("await execute('crypto-'+bits,tests+'/crypto-'+bits+'-probe.exe',[],{},40)"));
-  assert.ok(validator.includes('wine.results.length!==20'));
+  assert.ok(validator.includes('wine.results.length!==22'));
   for(const name of ['NCryptCreatePersistedKey','NCryptSignHash','NCryptVerifySignature','BCryptSignHash','BCryptVerifySignature','BCRYPT_ECDSA_P521_ALGORITHM','BCRYPT_RSA_ALGORITHM'])
     assert.ok(probe.includes(name),name);
   assert.doesNotMatch(probe,/todo_wine|win_skip|XUser|XGameSave|XODUS/);
@@ -90,6 +90,18 @@ test('both ABI PackageId lifetimes and packaged/unpackaged results are mandatory
   for(const text of [contracts,validator])assert.ok(text.includes('[2478,6,24]'));
   assert.ok(validator.includes("r.name==='package-id-'+bits"));
   for(const api of ['IPackageStatics_get_Current','IPackage_get_Id','IPackageId_get_Name','APPMODEL_ERROR_NO_PACKAGE','CreateThread','IPackageId_Release'])assert.ok(probe.includes(api),api);
+  assert.doesNotMatch(probe,/todo_wine|win_skip|XUser|XGameSave/);
+});
+test('both ABI ApplicationData cache, identity and negative folder checks are mandatory',()=>{
+  const fixture=fs.readFileSync(project+'/ci/build-fixtures.mjs','utf8');
+  const contracts=fs.readFileSync(project+'/ci/wine-contracts.mjs','utf8');
+  const validator=fs.readFileSync(project+'/ci/validate-runtime.mjs','utf8');
+  const probe=fs.readFileSync(project+'/runtime-tests/applicationdata-probe.c','utf8');
+  assert.ok(fixture.includes("compile('applicationdata-'+bits+'-probe.exe','applicationdata-probe.c'"));
+  assert.ok(contracts.includes("await execute('applicationdata-'+bits,tests+'/applicationdata-'+bits+'-probe.exe')"));
+  for(const text of [contracts,validator])assert.ok(text.includes('[45,7,25]'));
+  assert.ok(validator.includes('wine.results.length!==22'));
+  for(const api of ['IApplicationData2_get_LocalCacheFolder','IApplicationData_get_LocalFolder','GetCurrentPackageFamilyName','ERROR_DIRECTORY','APPMODEL_ERROR_NO_PACKAGE','first==second','IStorageItem_get_DateCreated'])assert.ok(probe.includes(api),api);
   assert.doesNotMatch(probe,/todo_wine|win_skip|XUser|XGameSave/);
 });
 test('packaging rejects all non-main and untrusted contexts before accessing a candidate',()=>{
