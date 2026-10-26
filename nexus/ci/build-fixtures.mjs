@@ -25,7 +25,9 @@ function run(command,args,cwd=root,timeout=600000){plans.push({command,args});re
 for(const abi of ['win64','win32']) {
   const mounts=['--mount',`type=bind,src=${cpp},dst=/cpp,readonly`,'--mount',`type=bind,src=${wine},dst=/wine,readonly`,'--mount',`type=bind,src=${built.runtime},dst=/engine,readonly`,'--mount',`type=bind,src=${root},dst=/fixtures`,'--mount',`type=bind,src=${sdkBuild}/obj-wine-x86_64/tools/widl/widl,dst=/widl,readonly`];
   const base=['run','--rm','--network=none',...(engine==='podman'?['--userns=keep-id']:[]),'--user',`${process.getuid()}:${process.getgid()}`,'-e','CCACHE_DIR=/fixtures/compiler-cache','-e','CCACHE_MAXSIZE=128M','-e','CCACHE_COMPILERCHECK=content',...mounts,built.inputs.sdk];
-  run(engine,[...base,'cmake','-S','/cpp','-B','/fixtures/'+abi,'-DCMAKE_TOOLCHAIN_FILE=/cpp/'+abi+'-target.cmake','-DENABLE_TESTS=ON','-DNEXUS_MIGRATION_PROBES=ON','-DNEXUS_WINE_SOURCE=/wine','-DWIDL=/widl','-DWINE_EXECUTABLE=/engine/files/bin/wine']);
+  // Match component CI: MinGW PR110572 affects unoptimized C++23 RTTI.
+  // Keep assertions enabled, rather than using Release/NDEBUG or hiding linker errors.
+  run(engine,[...base,'cmake','-S','/cpp','-B','/fixtures/'+abi,'-DCMAKE_TOOLCHAIN_FILE=/cpp/'+abi+'-target.cmake','-DCMAKE_CXX_FLAGS=-O2','-DENABLE_TESTS=ON','-DNEXUS_MIGRATION_PROBES=ON','-DNEXUS_WINE_SOURCE=/wine','-DWIDL=/widl','-DWINE_EXECUTABLE=/engine/files/bin/wine']);
   run(engine,[...base,'cmake','--build','/fixtures/'+abi,'--parallel','4']);
 }
 const native=path.join(root,'native');await fs.mkdir(native,{recursive:true});
@@ -41,6 +43,7 @@ for(const bits of [64,32])compile('appmodel-'+bits+'-probe.exe','appmodel-probe.
 for(const bits of [64,32]){
   const arch=bits===64?'x86_64':'i386',obj=sdkBuild+'/obj-wine-'+arch;
   compile('package-id-'+bits+'-probe.exe','package-id-probe.c',['-Wextra','-Werror','-municode',obj+'/dlls/combase/'+arch+'-windows/libcombase.a',obj+'/dlls/kernelbase/'+arch+'-windows/libkernelbase.a','-lole32'],bits,true);
+  compile('applicationdata-'+bits+'-probe.exe','applicationdata-probe.c',['-Wextra','-Werror','-municode',obj+'/dlls/combase/'+arch+'-windows/libcombase.a',obj+'/dlls/kernelbase/'+arch+'-windows/libkernelbase.a','-lole32'],bits,true);
 }
 for(const bits of [64,32])compile('crypto-'+bits+'-probe.exe','crypto-probe.c',['-Wextra','-Werror','-lncrypt','-lbcrypt'],bits);
 const folder=native+'/playfab-folder';await fs.mkdir(folder,{recursive:true});
