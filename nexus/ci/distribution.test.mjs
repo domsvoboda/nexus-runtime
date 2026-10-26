@@ -49,10 +49,12 @@ test('SDK fixture compilation uses real matching Wine and a private writable cac
   const text=fs.readFileSync(project+'/ci/build-fixtures.mjs','utf8');
   assert.match(text,/src=\$\{built\.runtime\},dst=\/engine,readonly/);
   assert.match(text,/-DWINE_EXECUTABLE=\/engine\/files\/bin\/wine/);
+  assert.match(text,/-DCMAKE_CXX_FLAGS=-O2/);
   assert.match(text,/CCACHE_DIR=\/fixtures\/compiler-cache/);
   assert.match(text,/CCACHE_MAXSIZE=128M/);
   assert.match(text,/--network=none/);
   assert.doesNotMatch(text,/WINE_EXECUTABLE=\/bin\/(?:true|false)|ENABLE_TESTS=OFF/);
+  assert.doesNotMatch(text,/-DNDEBUG|-fno-rtti|allow-multiple-definition|CMAKE_BUILD_TYPE=Release/);
 });
 test('evidence uploads cannot recursively follow prefix Z drive links',()=>{
   const text=fs.readFileSync(path.join(repository,'.github/workflows/nexus-runtime.yml'),'utf8');
