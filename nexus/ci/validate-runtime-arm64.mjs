@@ -23,6 +23,17 @@ for(const name of ['GCC-runtime-copyright','MinGW-runtime-copyright','libxml2-CO
 await assertPortable(runtime);
 const proof={schema:1,arch:'arm64',scope:'exact ARM64 runtime, synthetic offline gates only',realGameTest:false,realAccountTest:false,realCloudTest:false,stableApproved:false,graph:built.graph,runtime,builtSha256:await fileHash(output+'/built.json'),treeSha256:await treeHash(runtime),results:[]};
 const engine=files+'/'+target.bin+'/wine';
+// Per-entry snapshot so a changed runtime names the paths Wine or FEX touched.
+async function entries(root){
+  const result=new Map();
+  async function visit(directory){for(const entry of await fs.readdir(directory,{withFileTypes:true})){
+    const file=path.join(directory,entry.name),st=await fs.lstat(file),relative=path.relative(root,file);
+    if(entry.isDirectory()){result.set(relative,'d'+(st.mode&0o777));await visit(file);}
+    else result.set(relative,entry.isSymbolicLink()?'l'+await fs.readlink(file):'f'+(st.mode&0o777)+':'+await fileHash(file));
+  }}
+  await visit(root);return result;
+}
+const before=await entries(runtime);
 let passed=false;
 async function record(name,result,check){
   const log=work+'/'+name+'.log',text=(result.stdout||'')+(result.stderr||'')+(result.error?'\nERROR '+result.error.message:'');
@@ -82,7 +93,11 @@ try{
     await wine('arm64-load-'+arch,['probe-'+arch+'.exe'],text=>text.includes('MACHINE process='+machine+' native=0xaa64')&&/MODULE C:\\windows\\system32\\xgameruntime\.dll/i.test(text.replace(/syswow64/i,'system32'))&&text.includes('BUILTIN yes')&&text.includes('RESULT PASS'));
   const drain=spawnSync(files+'/'+target.bin+'/wineserver',['-w'],{env,timeout:60000,stdio:'ignore'});
   if(drain.status!==0||drain.error||drain.signal)throw Error('ARM64 prefix failed to drain');
-  if(await fileHash(output+'/built.json')!==proof.builtSha256||await treeHash(runtime)!==proof.treeSha256)throw Error('Runtime changed during validation');
+  if(await fileHash(output+'/built.json')!==proof.builtSha256||await treeHash(runtime)!==proof.treeSha256){
+    const after=await entries(runtime),changed=[...new Set([...before.keys(),...after.keys()])].filter(name=>before.get(name)!==after.get(name)).sort();
+    await fs.writeFile(work+'/runtime-changes.log',changed.map(name=>name+' '+(before.get(name)??'-')+' -> '+(after.get(name)??'-')).join('\n')+'\n',{flag:'wx'});
+    throw Error('Runtime changed during validation: '+changed.slice(0,20).join(', '));
+  }
   passed=true;
 }finally{
   proof.passed=passed;await fs.writeFile(work+'/results.json',JSON.stringify(proof,null,2)+'\n',{flag:'wx',mode:0o600});console.log('VALIDATION_RESULT '+work+'/results.json');
