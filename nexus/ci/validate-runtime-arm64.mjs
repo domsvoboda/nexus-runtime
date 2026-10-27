@@ -56,9 +56,22 @@ try{
     execFileSync(containerEngine,['run','--rm','--network=none',...(containerEngine==='podman'?['--userns=keep-id']:[]),'--user',`${process.getuid()}:${process.getgid()}`,'--mount',`type=bind,src=${probes},dst=/probes`,built.inputs.sdkArm64,compiler,'-O2','-Wall','-Werror','-o','/probes/probe-'+arch+'.exe','/probes/probe.c'],{env:sourceEnvironment(),stdio:'inherit',timeout:600000});
     if(peMachine(await fs.readFile(probes+'/probe-'+arch+'.exe'))!==arch)throw Error('Wrong probe machine: '+arch);
   }
-  // Use a copy of the shipped ARM64 prefix, exactly as Proton seeds a new title.
-  const prefix=work+'/pfx';
-  await fs.cp(files+'/share/'+target.prefix,prefix,{recursive:true,errorOnExist:true,force:false,dereference:false,verbatimSymlinks:true});
+  // Seed a prefix from the shipped ARM64 template as Proton's pfx_copy does:
+  // relative links to Wine builtins become absolute, other links stay verbatim.
+  const prefix=work+'/pfx',template=files+'/share/'+target.prefix;
+  const builtin=/\/lib\/wine\/(?:i386|x86_64|aarch64)-(?:unix|windows)$/;
+  async function seed(source,destination){
+    await fs.mkdir(destination);
+    for(const entry of await fs.readdir(source,{withFileTypes:true})){
+      const from=path.join(source,entry.name),to=path.join(destination,entry.name);
+      if(entry.isDirectory())await seed(from,to);
+      else if(entry.isSymbolicLink()){
+        const value=await fs.readlink(from);
+        await fs.symlink(builtin.test(path.dirname(value))?path.resolve(source,value):value,to);
+      }else await fs.copyFile(from,to,fs.constants.COPYFILE_EXCL);
+    }
+  }
+  await seed(template,prefix);
   const env={...sourceEnvironment(),WINEPREFIX:prefix,WINEDEBUG:'-all',WINEDLLPATH:files+'/lib/vkd3d:'+files+'/lib/wine',WINEDLLOVERRIDES:'winemenubuilder.exe=d;mscoree,mshtml=d',LD_LIBRARY_PATH:files+'/lib/'+target.unixLibrary,FEX_APP_CONFIG_LOCATION:files+'/share/fex-emu/',PATH:files+'/'+target.bin+':'+process.env.PATH};
   const wine=(name,args,check)=>record(name,spawnSync(engine,args,{cwd:probes,env,encoding:'utf8',timeout:900000,maxBuffer:8*1024*1024}),check);
   await wine('arm64-prefix-boot',['wineboot','-u'],()=>true);
