@@ -1014,6 +1014,11 @@ XGAMERUNTIME_arm64ec_CMAKE_ARGS = \
   -DCMAKE_SYSTEM_NAME=Windows \
   -DCMAKE_SYSTEM_PROCESSOR=ARM64 \
   -DCMAKE_INSTALL_LIBDIR=lib/wine/aarch64-windows
+# The ARM64 SDK's llvm-mingw defaults to Windows 7 headers, which hide APIs
+# such as BCryptHash; the x86_64 SDK's MinGW already exposes them.
+ifeq ($(TARGET_ARCH),arm64)
+XGAMERUNTIME_CFLAGS = -D_WIN32_WINNT=0x0A00
+endif
 
 $(eval $(call rules-source,xgameruntime,$(SRCDIR)/wine/dlls/xgameruntime))
 $(eval $(call rules-cmake,xgameruntime,i386,windows))
@@ -1022,8 +1027,8 @@ $(eval $(call rules-cmake,xgameruntime,arm64ec,windows))
 
 # rules-cmake has no per-architecture flags; the later assignment wins in env.
 XGAMERUNTIME_arm64ec_ENV += \
-  CFLAGS="$(arm64ec_CFLAGS) $(CFLAGS) -marm64x" \
-  CXXFLAGS="$(arm64ec_CFLAGS) $(CFLAGS) -marm64x" \
+  CFLAGS="$(XGAMERUNTIME_CFLAGS) $(arm64ec_CFLAGS) $(CFLAGS) -marm64x" \
+  CXXFLAGS="$(XGAMERUNTIME_CFLAGS) $(arm64ec_CFLAGS) $(CFLAGS) -marm64x" \
   LDFLAGS="$(arm64ec_LDFLAGS) $(LDFLAGS) -marm64x"
 
 # The host-tool barrier also completes Wine's generated NLS dependencies.
