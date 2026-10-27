@@ -2,12 +2,19 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {project,readJson,sha256} from './inputs.mjs';
-export async function verifyAuxiliary(directory,inputs){
+import {targets} from './target.mjs';
+import {llvmMingwPin} from './llvm-mingw.mjs';
+export async function verifyAuxiliary(directory,inputs,target=targets.x86_64){
   const bytes=await fs.readFile(path.join(directory,'auxiliary.json')),manifest=JSON.parse(bytes);
   const lockHash=sha256(await fs.readFile(path.join(project,'inputs.lock.json')));
   if(manifest.inputsSha256!==lockHash&&sha256(bytes)!==inputs.verifiedAuxiliaryManifestSha256)throw Error('Auxiliary producer does not match the checked inputs');
   for(const name of ['url','commit','version'])if(manifest.source?.[name]!==inputs.nghttp2[name])throw Error('Wrong nghttp2 source');
-  const layouts=[['headers',['nghttp2.h','nghttp2ver.h'],name=>'components/nghttp2/'+name],['libraries',['i386','x86_64'],name=>'components/'+name+'/libnghttp2.dll'],['compatibility',['PlayFabGameSave.dll','gaming-services-version.exe','wine-launcher'],name=>'components/'+name]];
+  if((manifest.arch??'x86_64')!==target.name)throw Error('Auxiliary components target another architecture');
+  if(target.name==='arm64'){
+    const pin=llvmMingwPin({NEXUS_LLVM_MINGW_URL:manifest.toolchain?.url,NEXUS_LLVM_MINGW_SHA256:manifest.toolchain?.sha256});
+    if(Object.keys(manifest.toolchain).length!==2||pin.url!==manifest.toolchain.url)throw Error('Unpinned auxiliary toolchain');
+  }else if(manifest.toolchain!==undefined)throw Error('Unexpected auxiliary toolchain');
+  const layouts=[['headers',['nghttp2.h','nghttp2ver.h'],name=>'components/nghttp2/'+name],['libraries',target.peArchitectures,name=>'components/'+name+'/libnghttp2.dll'],['compatibility',['PlayFabGameSave.dll','gaming-services-version.exe','wine-launcher'],name=>'components/'+name]];
   for(const [group,names,file]of layouts){
     if(Object.keys(manifest[group]||{}).sort().join(',')!==[...names].sort().join(','))throw Error('Wrong auxiliary group: '+group);
     for(const name of names){
@@ -22,7 +29,7 @@ export async function verifyAuxiliary(directory,inputs){
   if(Object.keys(media.libraries||{}).sort().join(',')!==Object.keys(lock.libraries).sort().join(','))throw Error('Incomplete media libraries');
   for(const [soname,filename]of Object.entries(lock.libraries)){
     const item=media.libraries[soname];
-    if(item.filename!==filename||sha256(await fs.readFile(path.join(directory,'media/stage/usr/lib/x86_64-linux-gnu',filename)))!==item.sha256)throw Error('Media checksum mismatch: '+soname);
+    if(item.filename!==filename||sha256(await fs.readFile(path.join(directory,'media/stage/usr/lib',target.unixLibrary,filename)))!==item.sha256)throw Error('Media checksum mismatch: '+soname);
   }
   return {manifest,manifestSha256:sha256(bytes),mediaSha256:sha256(await fs.readFile(path.join(directory,'media/media-manifest.json')))};
 }

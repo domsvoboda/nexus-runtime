@@ -1,0 +1,127 @@
+name: Nexus runtime ARM64 candidate (Experimental)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: runtime-candidate-arm64-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  # ARM64X nghttp2 needs llvm-mingw on the aarch64 host. Both values are
+  # mandatory: the build fails if either is missing or the archive differs.
+  NEXUS_LLVM_MINGW_URL: https://github.com/mstorsjo/llvm-mingw/releases/download/20261006/llvm-mingw-20261006-ucrt-ubuntu-22.04-aarch64.tar.xz
+  NEXUS_LLVM_MINGW_SHA256: e77c4acfa44184f6b0c52b814d724ad63b2ecebb3c3f6f842c0846e717cbd23c
+jobs:
+  auxiliary:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install bounded portable auxiliary toolchain
+        timeout-minutes: 15
+        run: |
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 install -y --no-install-recommends build-essential cmake gcc-mingw-w64-x86-64 gcc-mingw-w64-i686 curl xz-utils
+      - run: node --test nexus/runtime-compat/*.test.mjs nexus/llvm-mingw.test.mjs
+      - run: node nexus/build-auxiliary.mjs --arch arm64 --work "$RUNNER_TEMP/nexus-auxiliary"
+      - name: Archive exact auxiliary source and binaries
+        run: tar --exclude=.git --exclude=nexus-auxiliary/llvm-mingw -cJf "$RUNNER_TEMP/auxiliary.tar.xz" -C "$RUNNER_TEMP" nexus-auxiliary
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexus-auxiliary-arm64
+          path: ${{ runner.temp }}/auxiliary.tar.xz
+          if-no-files-found: error
+          retention-days: 7
+  runtime:
+    if: github.ref == 'refs/heads/main'
+    needs: auxiliary
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    env:
+      NEXUS_CONTAINER_ENGINE: docker
+      NEXUS_BUILD_JOBS: '4'
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 3G
+      CCACHE_COMPILERCHECK: content
+      PYTHONDONTWRITEBYTECODE: '1'
+      XZ_OPT: '-T2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Report runner capacity
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          nproc
+          df -h "$RUNNER_TEMP"
+          docker version --format '{{.Server.Arch}}'
+      - name: Initialize runner-local cache directories
+        run: |
+          printf 'CCACHE_DIR=%s/nexus-ccache\nCARGO_HOME=%s/nexus-cargo\n' "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Install bounded host prerequisites
+        timeout-minutes: 15
+        run: |
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 install -y --no-install-recommends build-essential ccache rsync file curl xz-utils xvfb xauth
+      - uses: actions/download-artifact@v4
+        with:
+          name: nexus-auxiliary-arm64
+          path: ${{ runner.temp }}
+      - run: tar -xJf "$RUNNER_TEMP/auxiliary.tar.xz" -C "$RUNNER_TEMP"
+      - name: Check exact clean source and ARM64 build policy
+        run: |
+          node nexus/check-source.mjs
+          node --test nexus/inputs.test.mjs nexus/sdk-build-plan.test.mjs nexus/build-policy.test.mjs nexus/llvm-mingw.test.mjs
+      - id: cache-plan
+        run: node nexus/ci/cache-plan.mjs --arch arm64
+      - uses: actions/cache/restore@v4
+        id: compiler-cache
+        with:
+          path: ${{ runner.temp }}/nexus-ccache
+          key: ${{ steps.cache-plan.outputs.key }}
+          restore-keys: ${{ steps.cache-plan.outputs.restore-prefix }}
+      - name: Build coherent pinned ARM64 SDK runtime
+        id: compile
+        run: node nexus/build-runtime.mjs --arch arm64 "$RUNNER_TEMP/nexus-auxiliary" "$RUNNER_TEMP/nexus-work" "$RUNNER_TEMP/nexus-output"
+      - name: Save bounded compiler cache even after a compile failure
+        if: always() && !cancelled() && steps.compiler-cache.outcome == 'success' && steps.compiler-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/nexus-ccache
+          key: ${{ steps.cache-plan.outputs.key }}
+      - name: Report actual compiler cache statistics
+        if: always() && !cancelled() && steps.compile.outcome != 'skipped'
+        run: ccache --show-stats
+      - name: Validate ARM64 layout, prefix and aarch64, x86_64 and i386 module loading
+        run: xvfb-run -a node nexus/ci/validate-runtime-arm64.mjs "$RUNNER_TEMP/nexus-output" "$RUNNER_TEMP/nexus-validation"
+      - name: Package validated bytes and corresponding source only
+        run: node nexus/ci/package-runtime-arm64.mjs "$RUNNER_TEMP/nexus-output" "$RUNNER_TEMP/nexus-validation"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexus-runtime-arm64
+          path: |
+            ${{ runner.temp }}/nexus-output/*.tar.xz
+            ${{ runner.temp }}/nexus-output/*.sha512sum
+            ${{ runner.temp }}/nexus-output/candidate.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain synthetic ARM64 test evidence without prefixes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-validation-arm64
+          path: |
+            ${{ runner.temp }}/nexus-validation/*.json
+            ${{ runner.temp }}/nexus-validation/*.log
+            ${{ runner.temp }}/nexus-output/built.json
+          retention-days: 7

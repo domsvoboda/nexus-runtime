@@ -1008,13 +1008,26 @@ XGAMERUNTIME_i386_CMAKE_ARGS = \
 XGAMERUNTIME_x86_64_CMAKE_ARGS = \
   -DCMAKE_TOOLCHAIN_FILE="$(XGAMERUNTIME_SRC)/win64-target.cmake" \
   -DCMAKE_INSTALL_LIBDIR=lib/wine/x86_64-windows
+# ARM64 targets build one ARM64X module, like DXVK: native aarch64 code plus
+# ARM64EC code for x86_64 titles running under FEX, in aarch64-windows.
+XGAMERUNTIME_arm64ec_CMAKE_ARGS = \
+  -DCMAKE_SYSTEM_NAME=Windows \
+  -DCMAKE_SYSTEM_PROCESSOR=ARM64 \
+  -DCMAKE_INSTALL_LIBDIR=lib/wine/aarch64-windows
 
 $(eval $(call rules-source,xgameruntime,$(SRCDIR)/wine/dlls/xgameruntime))
 $(eval $(call rules-cmake,xgameruntime,i386,windows))
 $(eval $(call rules-cmake,xgameruntime,x86_64,windows))
+$(eval $(call rules-cmake,xgameruntime,arm64ec,windows))
+
+# rules-cmake has no per-architecture flags; the later assignment wins in env.
+XGAMERUNTIME_arm64ec_ENV += \
+  CFLAGS="$(arm64ec_CFLAGS) $(CFLAGS) -marm64x" \
+  CXXFLAGS="$(arm64ec_CFLAGS) $(CFLAGS) -marm64x" \
+  LDFLAGS="$(arm64ec_LDFLAGS) $(LDFLAGS) -marm64x"
 
 # The host-tool barrier also completes Wine's generated NLS dependencies.
-$(OBJ)/.xgameruntime-i386-configure $(OBJ)/.xgameruntime-x86_64-configure: $(OBJ)/.wine-$(HOST_ARCH)-tools
+$(OBJ)/.xgameruntime-i386-configure $(OBJ)/.xgameruntime-x86_64-configure $(OBJ)/.xgameruntime-arm64ec-configure: $(OBJ)/.wine-$(HOST_ARCH)-tools
 
 default_pfx: xgameruntime
 
@@ -1568,7 +1581,7 @@ redist: all
 
 ifeq ($(module),xgameruntime)
 module32: xgameruntime-i386-build
-module64: xgameruntime-x86_64-build
+module64: xgameruntime-x86_64-build $(if $(filter arm64ec-windows,$(ARCHS)),xgameruntime-arm64ec-build)
 module: module32 module64
 else
 module32: | all-source wine-i386-configure
