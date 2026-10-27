@@ -86,7 +86,11 @@ try{
   // default_pfx.py removes drive links; Proton's setup_prefix recreates them.
   await fs.mkdir(prefix+'/dosdevices',{recursive:true});
   for(const [drive,value]of [['c:','../drive_c'],['z:','/']])try{await fs.symlink(value,prefix+'/dosdevices/'+drive);}catch(e){if(e.code!=='EEXIST')throw e;}
-  const env={...sourceEnvironment(),WINEPREFIX:prefix,WINEDEBUG:'-all',WINEDLLPATH:files+'/lib/vkd3d:'+files+'/lib/wine',WINEDLLOVERRIDES:'winemenubuilder.exe=d;mscoree,mshtml=d',LD_LIBRARY_PATH:files+'/lib/'+target.unixLibrary,FEX_APP_CONFIG_LOCATION:files+'/share/fex-emu/',PATH:files+'/'+target.bin+':'+process.env.PATH};
+  // FEX creates AppConfig/ under its config location; keep that out of the runtime.
+  const fexConfig=work+'/fex-emu';
+  await fs.cp(files+'/share/fex-emu',fexConfig,{recursive:true,errorOnExist:true,force:false});
+  await fs.mkdir(work+'/home',{mode:0o700});
+  const env={...sourceEnvironment(),WINEPREFIX:prefix,WINEDEBUG:'-all',WINEDLLPATH:files+'/lib/vkd3d:'+files+'/lib/wine',WINEDLLOVERRIDES:'winemenubuilder.exe=d;mscoree,mshtml=d',LD_LIBRARY_PATH:files+'/lib/'+target.unixLibrary,FEX_APP_CONFIG_LOCATION:fexConfig+'/',HOME:work+'/home',PATH:files+'/'+target.bin+':'+process.env.PATH};
   const wine=(name,args,check)=>record(name,spawnSync(engine,args,{cwd:probes,env,encoding:'utf8',timeout:900000,maxBuffer:8*1024*1024}),check);
   await wine('arm64-prefix-boot',['wineboot','-u'],()=>true);
   for(const [arch,machine]of [['aarch64','0x0000'],['x86_64','0x0000'],['i386','0x014c']])
