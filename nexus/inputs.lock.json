@@ -4,6 +4,7 @@
   "channel": "experimental",
   "verifiedAuxiliaryManifestSha256": "85020aaed8b15afce50e252c69a23709a6363cecc57084b766c3b4e888ff6ca7",
   "sdk": "registry.gitlab.steamos.cloud/proton/steamrt4/sdk/x86_64@sha256:6c1789cad862fd8ed9d46d71bbf8752bb7cb2336ab5e9680c0f0e3e7c88d77f1",
+  "sdkArm64": "registry.gitlab.steamos.cloud/proton/steamrt4/sdk/arm64-llvm@sha256:3a8199ffdd54c51f47e1b0d059e6fe583745214043f1f8c2e2e18377e72a3776",
   "upstream": {
     "proton": "7a94df49e4695fc101fd47d614166e69c43d9669",
     "wine": "7fc704ef49c50e9702c9983a5250d5738697bb04",
