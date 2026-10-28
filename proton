@@ -1540,6 +1540,17 @@ def pe_machine(path):
     except (OSError, ValueError):
         return None
 
+# Embedded by C++ runtimes whose 32-bit 64-bit atomics use locked
+# instructions, which FEX keeps atomic without vector TSO.
+fex_safe_atomics_marker = b"nexus-fex-safe-i386-atomics-v1"
+
+def file_contains(path, marker):
+    try:
+        with open(path, "rb") as f:
+            return marker in f.read()
+    except OSError:
+        return False
+
 def get_current_cpu_affinity():
     try:
         affinity = os.sched_getaffinity(0)
@@ -1762,8 +1773,10 @@ class Session:
 
         # 32-bit x86 code does 64-bit atomic loads and stores with SSE
         # (movq), which FEX only orders like x86 with vector TSO. Without it
-        # the Nexus C++ runtime's task queue crashes under WoW64.
-        if len(sys.argv) >= 3 and pe_machine(sys.argv[2]) == 0x014c:
+        # a C++ runtime lacking the locked-atomics fix crashes its task queue
+        # under WoW64, so only those runtimes get the slower setting.
+        if len(sys.argv) >= 3 and pe_machine(sys.argv[2]) == 0x014c and \
+                not file_contains(g_proton.lib_dir + "/wine/i386-windows/xgameruntime.dll", fex_safe_atomics_marker):
             app_config["Config"]["VectorTSOEnabled"] = "1"
 
         # if user has specified an override, take those values

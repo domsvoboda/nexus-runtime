@@ -131,8 +131,9 @@ try{
     if(await fileHash(dll)!==built.metadata.componentsByArchitecture[arch]['xgameruntime.dll'])throw Error('Coherent C++ module differs');
     await fs.copyFile(dll,bin+'/xgameruntime.dll',fs.constants.COPYFILE_EXCL);
     // The FEX config Proton writes for a game of this ABI: 32-bit exes get
-    // vector TSO, which their SSE 64-bit atomics need under WoW64.
-    const appConfig={Config:arch==='i386'?{VectorTSOEnabled:'1'}:{},ThunksDB:{}},appConfigFile=directory+'/proton-fex-config.json';
+    // vector TSO unless the C++ module carries the locked-atomics fix.
+    const fexSafeAtomics=(await fs.readFile(dll)).includes('nexus-fex-safe-i386-atomics-v1');
+    const appConfig={Config:arch==='i386'&&!fexSafeAtomics?{VectorTSOEnabled:'1'}:{},ThunksDB:{}},appConfigFile=directory+'/proton-fex-config.json';
     await fs.writeFile(appConfigFile,JSON.stringify(appConfig,null,2),{flag:'wx'});
     proof.fexAppConfig={...proof.fexAppConfig,[abi]:appConfig.Config};
     for(const gate of gates){
