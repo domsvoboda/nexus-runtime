@@ -48,7 +48,9 @@ test('runner paths are initialized in a step, never in the restricted job-level 
 test('SDK fixture compilation uses real matching Wine and a private writable cache',()=>{
   const text=fs.readFileSync(project+'/ci/build-fixtures.mjs','utf8');
   assert.match(text,/src=\$\{built\.runtime\},dst=\/engine,readonly/);
-  assert.match(text,/-DWINE_EXECUTABLE=\/engine\/files\/bin\/wine/);
+  assert.match(text,/-DWINE_EXECUTABLE=\/engine\/files\/'\+bin\+'\/wine/);
+  // x86_64 candidates keep files/bin and their own SDK; ARM64 uses its pinned SDK.
+  assert.match(text,/sdk=arm64\?built\.inputs\.sdkArm64:built\.inputs\.sdk,hostTools=arm64\?'aarch64':'x86_64',bin=arm64\?'bin-arm64':'bin'/);
   assert.match(text,/-DCMAKE_CXX_FLAGS=-O2/);
   assert.match(text,/CCACHE_DIR=\/fixtures\/compiler-cache/);
   assert.match(text,/CCACHE_MAXSIZE=128M/);

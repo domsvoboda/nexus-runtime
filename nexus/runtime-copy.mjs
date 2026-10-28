@@ -22,7 +22,7 @@ export async function makeSdkLinksPortable(runtime,sdkRoot){
       if(entry.isDirectory()){await visit(file);continue;}
       if(!entry.isSymbolicLink())continue;
       const value=await fs.readlink(file),resolved=path.resolve(directory,value);
-      if(relative==='files/share/default_pfx/dosdevices/z:'&&value==='/'){++proof.prefixDriveMappings;continue;}
+      if(['files/share/default_pfx/dosdevices/z:','files/share/default_pfx_arm64/dosdevices/z:'].includes(relative)&&value==='/'){++proof.prefixDriveMappings;continue;}
       const real=await fs.realpath(file);
       if(inside(runtime,resolved)&&inside(runtime,real))continue;
       if(!inside(sdkRoot,real))throw Error('External runtime link is not an SDK file: '+relative);

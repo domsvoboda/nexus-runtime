@@ -6,15 +6,15 @@ const quote=value=>"'"+value.replaceAll("'","'\\''")+"'";
 
 // Proton ships wineboot.exe, not the distro's wineboot shell command. Bind
 // every bare Wine command used by component runners to this exact candidate.
-export async function prepareValidationTools(files,directory){
+export async function prepareValidationTools(files,directory,bin='bin'){
   const root=await fs.realpath(files);
   for(const name of ['wine','wineserver']){
-    const file=root+'/bin/'+name;
+    const file=root+'/'+bin+'/'+name;
     if(!(await fs.stat(file)).isFile())throw Error('Missing candidate command: '+name);
     await fs.access(file,fs.constants.X_OK);
   }
   await fs.mkdir(directory,{recursive:false,mode:0o700});
-  const commands={wine:[root+'/bin/wine'],wineboot:[root+'/bin/wine','wineboot.exe'],wineserver:[root+'/bin/wineserver']};
+  const commands={wine:[root+'/'+bin+'/wine'],wineboot:[root+'/'+bin+'/wine','wineboot.exe'],wineserver:[root+'/'+bin+'/wineserver']};
   for(const [name,args]of Object.entries(commands))
     await fs.writeFile(path.join(directory,name),'#!/bin/sh\nexec '+args.map(quote).join(' ')+' "$@"\n',{flag:'wx',mode:0o700});
   return directory;
