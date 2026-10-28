@@ -28,8 +28,8 @@
       "libs/vkd3d-shader/hlsl.l": "4bcde7ac8e4e43ea848483ca78dce9be0c2bf431398a912f53d339c6581791d5"
     }
   },
-  "requiresBackendVersion": "0.2.12",
-  "requiresLauncherVersion": "0.4.0",
+  "requiresBackendVersion": "0.2.13",
+  "requiresLauncherVersion": "0.4.1",
   "compatibilitySources": {
     "runtime-compat/wine-launcher.c": "b93a9669cc5b8420a79c74ecaee619d699c0105e54d1237770cdfed4ea7fe2a7",
     "runtime-compat/playfab-session.h": "a7bf5c391f58314439925e4095c31b6e93776609c0563a5df0198012799b80e3",
