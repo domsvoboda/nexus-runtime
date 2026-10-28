@@ -1526,6 +1526,20 @@ fex_application_profiles = {
     }
 }
 
+def pe_machine(path):
+    try:
+        with open(path, "rb") as f:
+            if f.read(2) != b"MZ":
+                return None
+            f.seek(0x3c)
+            offset = int.from_bytes(f.read(4), "little")
+            f.seek(offset)
+            if f.read(4) != b"PE\0\0":
+                return None
+            return int.from_bytes(f.read(2), "little")
+    except (OSError, ValueError):
+        return None
+
 def get_current_cpu_affinity():
     try:
         affinity = os.sched_getaffinity(0)
@@ -1745,6 +1759,12 @@ class Session:
             app_config["Config"]["Multiblock"] = self.env['STEAM_FEX_MULTIBLOCK']
         except (KeyError, ValueError):
             pass
+
+        # 32-bit x86 code does 64-bit atomic loads and stores with SSE
+        # (movq), which FEX only orders like x86 with vector TSO. Without it
+        # the Nexus C++ runtime's task queue crashes under WoW64.
+        if len(sys.argv) >= 3 and pe_machine(sys.argv[2]) == 0x014c:
+            app_config["Config"]["VectorTSOEnabled"] = "1"
 
         # if user has specified an override, take those values
         try:

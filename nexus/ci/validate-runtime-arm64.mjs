@@ -130,8 +130,13 @@ try{
     const dll=files+'/lib/wine/'+arch+'-windows/xgameruntime.dll';
     if(await fileHash(dll)!==built.metadata.componentsByArchitecture[arch]['xgameruntime.dll'])throw Error('Coherent C++ module differs');
     await fs.copyFile(dll,bin+'/xgameruntime.dll',fs.constants.COPYFILE_EXCL);
+    // The FEX config Proton writes for a game of this ABI: 32-bit exes get
+    // vector TSO, which their SSE 64-bit atomics need under WoW64.
+    const appConfig={Config:arch==='i386'?{VectorTSOEnabled:'1'}:{},ThunksDB:{}},appConfigFile=directory+'/proton-fex-config.json';
+    await fs.writeFile(appConfigFile,JSON.stringify(appConfig,null,2),{flag:'wx'});
+    proof.fexAppConfig={...proof.fexAppConfig,[abi]:appConfig.Config};
     for(const gate of gates){
-      const r=spawnSync(process.execPath,[scripts+'/test-'+gate+'.mjs',directory,...(gate==='component'?[]:[engine])],{cwd:work,env:gateEnv,encoding:'utf8',timeout:1800000,maxBuffer:16*1024*1024});
+      const r=spawnSync(process.execPath,[scripts+'/test-'+gate+'.mjs',directory,...(gate==='component'?[]:[engine])],{cwd:work,env:{...gateEnv,FEX_APP_CONFIG:appConfigFile},encoding:'utf8',timeout:1800000,maxBuffer:16*1024*1024});
       if(!await record(abi+'-'+gate,{status:r.status,signal:r.signal,error:r.error,stdout:validationProcessOutput(r)},()=>true,{fatal:false}))failedGates.push(abi+'-'+gate);
     }
   }
