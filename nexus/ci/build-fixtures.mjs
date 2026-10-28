@@ -12,7 +12,9 @@ const built=await readJson(path.resolve(outputArg,'built.json')),root=path.resol
 // An ARM64 candidate builds the same x86 test programs in its own pinned SDK;
 // they run under ARM64EC/WoW64 FEX against the candidate's modules.
 const arm64=built.metadata.targetArchitecture==='arm64',sdk=arm64?built.inputs.sdkArm64:built.inputs.sdk,hostTools=arm64?'aarch64':'x86_64',bin=arm64?'bin-arm64':'bin';
-// Like Makefile.in for ARM64: llvm-mingw defaults to Windows 7 headers.
+// Like Makefile.in for ARM64: llvm-mingw defaults to Windows 7 headers. Its
+// linker also reserves a 1 MiB stack where the x86_64 SDK's GNU ld reserves
+// 2 MiB; some probes keep over 1 MiB of buffers on the stack.
 const windowsApi=arm64?' -D_WIN32_WINNT=0x0A00':'';
 const selection={sdk,sourceGraph:built.graph,source:built.source,runtime:built.runtime};
 if(resumeArg){
@@ -32,7 +34,7 @@ for(const abi of ['win64','win32']) {
   const base=['run','--rm','--network=none',...(engine==='podman'?['--userns=keep-id']:[]),'--user',`${process.getuid()}:${process.getgid()}`,'-e','CCACHE_DIR=/fixtures/compiler-cache','-e','CCACHE_MAXSIZE=128M','-e','CCACHE_COMPILERCHECK=content',...mounts,sdk];
   // Match component CI: MinGW PR110572 affects unoptimized C++23 RTTI.
   // Keep assertions enabled, rather than using Release/NDEBUG or hiding linker errors.
-  run(engine,[...base,'cmake','-S','/cpp','-B','/fixtures/'+abi,'-DCMAKE_TOOLCHAIN_FILE=/cpp/'+abi+'-target.cmake','-DCMAKE_CXX_FLAGS=-O2'+windowsApi,...(arm64?['-DCMAKE_C_FLAGS='+windowsApi.trim()]:[]),'-DENABLE_TESTS=ON','-DNEXUS_MIGRATION_PROBES=ON','-DNEXUS_WINE_SOURCE=/wine','-DWIDL=/widl','-DWINE_EXECUTABLE=/engine/files/'+bin+'/wine']);
+  run(engine,[...base,'cmake','-S','/cpp','-B','/fixtures/'+abi,'-DCMAKE_TOOLCHAIN_FILE=/cpp/'+abi+'-target.cmake','-DCMAKE_CXX_FLAGS=-O2'+windowsApi,...(arm64?['-DCMAKE_C_FLAGS='+windowsApi.trim(),'-DCMAKE_EXE_LINKER_FLAGS=-Wl,--stack,2097152']:[]),'-DENABLE_TESTS=ON','-DNEXUS_MIGRATION_PROBES=ON','-DNEXUS_WINE_SOURCE=/wine','-DWIDL=/widl','-DWINE_EXECUTABLE=/engine/files/'+bin+'/wine']);
   run(engine,[...base,'cmake','--build','/fixtures/'+abi,'--parallel','4']);
 }
 const native=path.join(root,'native');await fs.mkdir(native,{recursive:true});
