@@ -102,8 +102,10 @@ jobs:
       - name: Report actual compiler cache statistics
         if: always() && !cancelled() && steps.compile.outcome != 'skipped'
         run: ccache --show-stats
-      - name: Validate ARM64 layout, prefix and aarch64, x86_64 and i386 module loading
-        run: xvfb-run -a node nexus/ci/validate-runtime-arm64.mjs "$RUNNER_TEMP/nexus-output" "$RUNNER_TEMP/nexus-validation"
+      - name: Compile fresh synthetic fixtures in the same pinned ARM64 SDK
+        run: node nexus/ci/build-fixtures.mjs "$RUNNER_TEMP/nexus-output" "$RUNNER_TEMP/nexus-fixtures"
+      - name: Validate ARM64 layout, module loading and C++ runtime gates under FEX
+        run: xvfb-run -a node nexus/ci/validate-runtime-arm64.mjs "$RUNNER_TEMP/nexus-output" "$RUNNER_TEMP/nexus-fixtures" "$RUNNER_TEMP/nexus-validation"
       - name: Package validated bytes and corresponding source only
         run: node nexus/ci/package-runtime-arm64.mjs "$RUNNER_TEMP/nexus-output" "$RUNNER_TEMP/nexus-validation"
       - uses: actions/upload-artifact@v4
@@ -123,5 +125,10 @@ jobs:
           path: |
             ${{ runner.temp }}/nexus-validation/*.json
             ${{ runner.temp }}/nexus-validation/*.log
+            ${{ runner.temp }}/nexus-validation/win64/nexus-*/*.json
+            ${{ runner.temp }}/nexus-validation/win64/nexus-*/*.log
+            ${{ runner.temp }}/nexus-validation/win32/nexus-*/*.json
+            ${{ runner.temp }}/nexus-validation/win32/nexus-*/*.log
+            ${{ runner.temp }}/nexus-fixtures/fixtures.json
             ${{ runner.temp }}/nexus-output/built.json
           retention-days: 7

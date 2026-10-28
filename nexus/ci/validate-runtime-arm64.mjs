@@ -9,19 +9,24 @@ import {project,readJson,sourceEnvironment} from '../inputs.mjs';
 import {fileHash,treeHash,assertPortable} from './provenance.mjs';
 import {peMachine,elfMachine} from '../pe.mjs';
 import {targets} from '../target.mjs';
-const [outputArg,validationArg]=process.argv.slice(2);
-if(process.argv.length!==4)throw Error('Usage: validate-runtime-arm64.mjs BUILD_OUTPUT NEW_VALIDATION');
+import {prepareValidationTools,validationProcessOutput} from './validation-tools.mjs';
+const [outputArg,fixturesArg,validationArg]=process.argv.slice(2);
+if(process.argv.length!==5)throw Error('Usage: validate-runtime-arm64.mjs BUILD_OUTPUT FIXTURES NEW_VALIDATION');
 if(process.arch!=='arm64')throw Error('ARM64 validation requires a native aarch64 host');
-const target=targets.arm64,output=await fs.realpath(outputArg),work=path.resolve(validationArg);
+const target=targets.arm64,output=await fs.realpath(outputArg),fixtures=await fs.realpath(fixturesArg),work=path.resolve(validationArg);
 const built=await readJson(output+'/built.json'),runtime=await fs.realpath(built.runtime),files=runtime+'/files';
 if(path.dirname(runtime)!==output||built.metadata.stableApproved!==false||built.metadata.targetArchitecture!=='arm64')throw Error('Invalid isolated ARM64 runtime');
 await fs.mkdir(work,{recursive:false});await fs.chmod(work,0o700);
+// The C++ runtime's own test programs, built in the same pinned ARM64 SDK.
+const fixtureProof=await readJson(fixtures+'/fixtures.json');
+if(fixtureProof.sdk!==built.inputs.sdkArm64||JSON.stringify(fixtureProof.sourceGraph)!==JSON.stringify(built.graph))throw Error('Test fixtures do not match the ARM64 SDK/source graph');
+for(const [file,expected]of Object.entries(fixtureProof.hashes))if(await fileHash(fixtures+'/'+file)!==expected)throw Error('Changed test fixture');
 for(const name of ['GCC-runtime-copyright','MinGW-runtime-copyright','libxml2-COPYING']){
   const source=project+'/licenses/'+name,file=files+'/share/doc/nexus-runtime/'+name;
   try{await fs.copyFile(source,file,fs.constants.COPYFILE_EXCL);}catch(e){if(e.code!=='EEXIST'||await fileHash(file)!==await fileHash(source))throw e;}
 }
 await assertPortable(runtime);
-const proof={schema:1,arch:'arm64',scope:'exact ARM64 runtime, synthetic offline gates only',realGameTest:false,realAccountTest:false,realCloudTest:false,stableApproved:false,graph:built.graph,runtime,builtSha256:await fileHash(output+'/built.json'),treeSha256:await treeHash(runtime),results:[]};
+const proof={schema:1,arch:'arm64',scope:'exact ARM64 runtime, synthetic offline gates only',realGameTest:false,realAccountTest:false,realCloudTest:false,stableApproved:false,graph:built.graph,runtime,builtSha256:await fileHash(output+'/built.json'),treeSha256:await treeHash(runtime),fixtureProofSha256:await fileHash(fixtures+'/fixtures.json'),results:[]};
 const engine=files+'/'+target.bin+'/wine';
 // Per-entry snapshot so a changed runtime names the paths Wine or FEX touched.
 async function entries(root){
@@ -101,6 +106,31 @@ try{
     await wine('arm64-load-'+arch,['probe-'+arch+'.exe'],text=>text.includes('MACHINE process='+machine+' native=0xaa64')&&/MODULE C:\\windows\\system32\\xgameruntime\.dll/i.test(text.replace(/syswow64/i,'system32'))&&text.includes('BUILTIN yes')&&text.includes('RESULT PASS'));
   const drain=spawnSync(files+'/'+target.bin+'/wineserver',['-w'],{env,timeout:60000,stdio:'ignore'});
   if(drain.status!==0||drain.error||drain.signal)throw Error('ARM64 prefix failed to drain');
+  // The x86_64 validation's C++ runtime gates, unchanged, for both x86 ABIs:
+  // win64 runs as ARM64EC and win32 as WoW64, both through FEX, against the
+  // candidate's builtin modules (ARM64X for win64), exactly as games load them.
+  const cpp=built.source+'/wine/dlls/xgameruntime',scripts=work+'/scripts';await fs.mkdir(scripts);
+  const gates=['component','authentication','user-contracts','store'];
+  for(const gate of gates){
+    const text=(await fs.readFile(cpp+'/scripts/test-'+gate+'.mjs','utf8')).replaceAll('xgameruntime=n','xgameruntime=b').replaceAll("base+'/lib64:'+base+'/lib'","base+'/lib/"+target.unixLibrary+":'+base+'/lib'").replaceAll("path.join(base,'lib64')+':'+path.join(base,'lib')","path.join(base,'lib','"+target.unixLibrary+"')+':'+path.join(base,'lib')");
+    await fs.writeFile(scripts+'/test-'+gate+'.mjs',text,{flag:'wx'});
+  }
+  const tools=await prepareValidationTools(files,work+'/candidate-tools',target.bin);
+  const gateEnv={...sourceEnvironment(),PATH:tools+':'+files+'/'+target.bin+':'+process.env.PATH,LD_LIBRARY_PATH:files+'/lib/'+target.unixLibrary+':'+files+'/lib',FEX_APP_CONFIG_LOCATION:fexConfig+'/',HOME:work+'/home',PYTHONDONTWRITEBYTECODE:'1'};
+  for(const [abi,arch]of [['win64','x86_64'],['win32','i386']]){
+    const directory=work+'/'+abi,bin=directory+'/bin';await fs.mkdir(bin,{recursive:true});
+    for(const name of await fs.readdir(fixtures+'/'+abi+'/bin'))if(name.endsWith('.exe'))await fs.copyFile(fixtures+'/'+abi+'/bin/'+name,bin+'/'+name,fs.constants.COPYFILE_EXCL);
+    await fs.copyFile(cpp+'/tests/Nexus/MicrosoftGame.config',bin+'/MicrosoftGame.config',fs.constants.COPYFILE_EXCL);
+    // The scripts inventory xgameruntime.dll beside the tests; xgameruntime=b
+    // still makes Wine load the candidate's builtin module.
+    const dll=files+'/lib/wine/'+arch+'-windows/xgameruntime.dll';
+    if(await fileHash(dll)!==built.metadata.componentsByArchitecture[arch]['xgameruntime.dll'])throw Error('Coherent C++ module differs');
+    await fs.copyFile(dll,bin+'/xgameruntime.dll',fs.constants.COPYFILE_EXCL);
+    for(const gate of gates){
+      const r=spawnSync(process.execPath,[scripts+'/test-'+gate+'.mjs',directory,...(gate==='component'?[]:[engine])],{cwd:work,env:gateEnv,encoding:'utf8',timeout:1800000,maxBuffer:16*1024*1024});
+      await record(abi+'-'+gate,{status:r.status,signal:r.signal,error:r.error,stdout:validationProcessOutput(r)},()=>true);
+    }
+  }
   if(await fileHash(output+'/built.json')!==proof.builtSha256||await treeHash(runtime)!==proof.treeSha256){
     const after=await entries(runtime),changed=[...new Set([...before.keys(),...after.keys()])].filter(name=>before.get(name)!==after.get(name)).sort();
     await fs.writeFile(work+'/runtime-changes.log',changed.map(name=>name+' '+(before.get(name)??'-')+' -> '+(after.get(name)??'-')).join('\n')+'\n',{flag:'wx'});

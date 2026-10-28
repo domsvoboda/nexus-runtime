@@ -9,7 +9,10 @@ import {buildPlayFabSessionProbe} from '../runtime-tests/build-playfab-session.m
 const [outputArg,fixturesArg,resumeArg]=process.argv.slice(2);
 if(!outputArg||!fixturesArg||process.argv.length>5||resumeArg&&resumeArg!=='--resume')throw Error('Usage: build-fixtures.mjs BUILD_OUTPUT NEW_FIXTURES [--resume]');
 const built=await readJson(path.resolve(outputArg,'built.json')),root=path.resolve(fixturesArg);
-const selection={sdk:built.inputs.sdk,sourceGraph:built.graph,source:built.source,runtime:built.runtime};
+// An ARM64 candidate builds the same x86 test programs in its own pinned SDK;
+// they run under ARM64EC/WoW64 FEX against the candidate's modules.
+const arm64=built.metadata.targetArchitecture==='arm64',sdk=arm64?built.inputs.sdkArm64:built.inputs.sdk,hostTools=arm64?'aarch64':'x86_64',bin=arm64?'bin-arm64':'bin';
+const selection={sdk,sourceGraph:built.graph,source:built.source,runtime:built.runtime};
 if(resumeArg){
   if(JSON.stringify(await readJson(root+'/selection.json'))!==JSON.stringify(selection))throw Error('Fixture resume source mismatch');
   try{await fs.access(root+'/fixtures.json');throw Error('Do not alter sealed test fixtures');}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -23,14 +26,17 @@ if(!['docker','podman'].includes(engine))throw Error('Unsupported SDK engine');
 const env=sourceEnvironment(),plans=[];
 function run(command,args,cwd=root,timeout=600000){plans.push({command,args});return execFileSync(command,args,{cwd,env,stdio:'inherit',timeout});}
 for(const abi of ['win64','win32']) {
-  const mounts=['--mount',`type=bind,src=${cpp},dst=/cpp,readonly`,'--mount',`type=bind,src=${wine},dst=/wine,readonly`,'--mount',`type=bind,src=${built.runtime},dst=/engine,readonly`,'--mount',`type=bind,src=${root},dst=/fixtures`,'--mount',`type=bind,src=${sdkBuild}/obj-wine-x86_64/tools/widl/widl,dst=/widl,readonly`];
-  const base=['run','--rm','--network=none',...(engine==='podman'?['--userns=keep-id']:[]),'--user',`${process.getuid()}:${process.getgid()}`,'-e','CCACHE_DIR=/fixtures/compiler-cache','-e','CCACHE_MAXSIZE=128M','-e','CCACHE_COMPILERCHECK=content',...mounts,built.inputs.sdk];
+  const mounts=['--mount',`type=bind,src=${cpp},dst=/cpp,readonly`,'--mount',`type=bind,src=${wine},dst=/wine,readonly`,'--mount',`type=bind,src=${built.runtime},dst=/engine,readonly`,'--mount',`type=bind,src=${root},dst=/fixtures`,'--mount',`type=bind,src=${sdkBuild}/obj-wine-${hostTools}/tools/widl/widl,dst=/widl,readonly`];
+  const base=['run','--rm','--network=none',...(engine==='podman'?['--userns=keep-id']:[]),'--user',`${process.getuid()}:${process.getgid()}`,'-e','CCACHE_DIR=/fixtures/compiler-cache','-e','CCACHE_MAXSIZE=128M','-e','CCACHE_COMPILERCHECK=content',...mounts,sdk];
   // Match component CI: MinGW PR110572 affects unoptimized C++23 RTTI.
   // Keep assertions enabled, rather than using Release/NDEBUG or hiding linker errors.
-  run(engine,[...base,'cmake','-S','/cpp','-B','/fixtures/'+abi,'-DCMAKE_TOOLCHAIN_FILE=/cpp/'+abi+'-target.cmake','-DCMAKE_CXX_FLAGS=-O2','-DENABLE_TESTS=ON','-DNEXUS_MIGRATION_PROBES=ON','-DNEXUS_WINE_SOURCE=/wine','-DWIDL=/widl','-DWINE_EXECUTABLE=/engine/files/bin/wine']);
+  run(engine,[...base,'cmake','-S','/cpp','-B','/fixtures/'+abi,'-DCMAKE_TOOLCHAIN_FILE=/cpp/'+abi+'-target.cmake','-DCMAKE_CXX_FLAGS=-O2','-DENABLE_TESTS=ON','-DNEXUS_MIGRATION_PROBES=ON','-DNEXUS_WINE_SOURCE=/wine','-DWIDL=/widl','-DWINE_EXECUTABLE=/engine/files/'+bin+'/wine']);
   run(engine,[...base,'cmake','--build','/fixtures/'+abi,'--parallel','4']);
 }
 const native=path.join(root,'native');await fs.mkdir(native,{recursive:true});
+// Native probes link x86_64 SDK Wine import libraries with host MinGW; they
+// stay in the x86_64 validation.
+if(!arm64){
 const tests=path.join(project,'runtime-tests'),include=['-D__WINESRC__','-I',sdkBuild+'/obj-wine-x86_64/include','-I',wine+'/include'];
 function compile(name,file,flags=[],bits=64,headers=false) {
   run(bits===64?'x86_64-w64-mingw32-gcc':'i686-w64-mingw32-gcc',[...(headers?include:[]),'-O2','-Wall',tests+'/'+file,'-o',native+'/'+name,...flags]);
@@ -53,9 +59,10 @@ compile('playfab-folder/nexus_pgs_native.dll','playfab-folder-probe.c',['-shared
 compile('playfab-folder/xgameruntime.dll','playfab-folder-probe.c',['-shared','-Wextra','-Werror','-DPROBE_RUNTIME']);
 compile('playfab-folder/playfab-folder-probe.exe','playfab-folder-probe.c');
 await buildPlayFabSessionProbe(native+'/playfab-session',[...include.slice(1),'-I',cpp+'/include','-I',root+'/win64/include']);
+}
 const hashes={};
 async function inventory(directory){for(const d of await fs.readdir(directory,{withFileTypes:true})){
   const file=path.join(directory,d.name);if(d.isDirectory())await inventory(file);else if(d.isFile()&&/\.(exe|dll)$/.test(d.name))hashes[path.relative(root,file)]=await fileHash(file);
 }}
 for(const directory of [root+'/win64/bin',root+'/win32/bin',native])await inventory(directory);
-await fs.writeFile(root+'/fixtures.json',JSON.stringify({schema:1,scope:'synthetic test executables only, not distribution components',sdk:built.inputs.sdk,sourceGraph:built.graph,plans,hashes},null,2)+'\n',{flag:'wx'});
+await fs.writeFile(root+'/fixtures.json',JSON.stringify({schema:1,scope:'synthetic test executables only, not distribution components',sdk,sourceGraph:built.graph,plans,hashes},null,2)+'\n',{flag:'wx'});

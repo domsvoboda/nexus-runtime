@@ -13,7 +13,7 @@ if(!outputArg||!validationArg||process.argv.length!==4)throw Error('BUILD_OUTPUT
 const output=await fs.realpath(outputArg),validation=await fs.realpath(validationArg);
 const built=await readJson(output+'/built.json'),proof=await readJson(validation+'/results.json');
 if(built.metadata.targetArchitecture!=='arm64'||built.graph.proton!==process.env.GITHUB_SHA||!/^nexus-runtime-11\.0-experimental-arm64-g[a-f0-9]{8}$/.test(built.name)||path.dirname(built.runtime)!==output||path.basename(built.runtime)!==built.name)throw Error('Not the exact ARM64 main distribution source');
-const gates=['arm64-layout','arm64-prefix-boot','arm64-load-aarch64','arm64-load-x86_64','arm64-load-i386'];
+const gates=['arm64-layout','arm64-prefix-boot','arm64-load-aarch64','arm64-load-x86_64','arm64-load-i386',...['win64','win32'].flatMap(abi=>['component','authentication','user-contracts','store'].map(gate=>abi+'-'+gate))];
 if(proof.passed!==true||proof.arch!=='arm64'||proof.stableApproved!==false||proof.realGameTest!==false||proof.builtSha256!==await fileHash(output+'/built.json')||proof.treeSha256!==await treeHash(built.runtime)||JSON.stringify(proof.graph)!==JSON.stringify(built.graph))throw Error('Unvalidated or changed runtime');
 if(proof.results.length!==gates.length||proof.results.some((r,i)=>r.name!==gates[i]||r.status!==0||r.signal||r.error))throw Error('Incomplete or failed ARM64 gates');
 for(const r of proof.results)if(!r.log.startsWith(validation+'/')||await fileHash(r.log)!==r.sha256)throw Error('Changed native log');
