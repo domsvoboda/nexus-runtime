@@ -55,6 +55,10 @@ try{
   }
   for(const [name,hash]of Object.entries(built.metadata.components))if(await fileHash(files+'/share/'+target.prefix+'/drive_c/windows/system32/'+name)!==hash)throw Error('Prefix component differs: '+name);
   layout.push('default_pfx_arm64 system32 components: '+Object.keys(built.metadata.components).length);
+  const byArch=built.metadata.componentsByArch;
+  if(Object.keys(byArch||{}).join()!=='aarch64-windows'||JSON.stringify(byArch['aarch64-windows'])!==JSON.stringify(built.metadata.components))throw Error('Launcher component contract differs');
+  for(const name of ['xgameruntime.dll','winhttp.dll','libnghttp2.dll','windows.web.dll','twinapi.appcore.dll','d3d8.dll','d3d9.dll','d3d10core.dll','d3d11.dll','dxgi.dll'])if(!byArch['aarch64-windows'][name])throw Error('Launcher component missing: '+name);
+  layout.push('launcher contract componentsByArch.aarch64-windows');
   for(const [soname]of Object.entries(JSON.parse(await fs.readFile(project+'/runtime-media.lock.json','utf8')).libraries))if(elfMachine(await fs.readFile(files+'/lib/'+target.unixLibrary+'/'+soname))!=='aarch64')throw Error('Media library is not aarch64: '+soname);
   layout.push('aarch64 media libraries');
   await record('arm64-layout',{status:0,stdout:layout.join('\n')+'\n'},()=>true);
