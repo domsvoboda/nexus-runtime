@@ -20,7 +20,9 @@ int main(void)
     CHECK("compute-level",level>=D3D_FEATURE_LEVEL_11_0);
     const char *source="RWStructuredBuffer<uint> output : register(u0); [numthreads(8,1,1)] void main(uint3 id : SV_DispatchThreadID) { output[id.x] = id.x * 17u + 23u; }";
     hr=D3DCompile(source,strlen(source),"synthetic",NULL,NULL,"main","cs_5_0",0,0,&code,&errors);
-    CHECK("compile",SUCCEEDED(hr)&&code);if(FAILED(hr))goto done;
+    CHECK("compile",SUCCEEDED(hr)&&code);
+    if(FAILED(hr)){printf("COMPILE hr=0x%08lx %s
+",(unsigned long)hr,errors?(const char *)ID3D10Blob_GetBufferPointer(errors):"(no messages)");goto done;}
     hr=ID3D11Device_CreateComputeShader(device,ID3D10Blob_GetBufferPointer(code),ID3D10Blob_GetBufferSize(code),NULL,&shader);
     CHECK("shader",SUCCEEDED(hr)&&shader);if(FAILED(hr))goto done;
     D3D11_BUFFER_DESC desc={0};desc.ByteWidth=32*sizeof(UINT);desc.Usage=D3D11_USAGE_DEFAULT;

@@ -45,7 +45,7 @@ try{
     await fs.rename(destination+'.probe',destination);
   }
   const result=await run([exe]);await fs.writeFile(path.join(root,'compute.log'),result.output);
-  const summary=result.output.split('\n').filter(x=>/^(FAIL |DXVK COMPUTE CHECKS )/.test(x));
+  const summary=result.output.split('\n').filter(x=>/^(FAIL |COMPILE |DXVK COMPUTE CHECKS )/.test(x));
   await fs.writeFile(path.join(root,'result.json'),JSON.stringify({root,icd,code:result.code,timeout:result.timeout,summary},null,2));
   console.log(JSON.stringify({root,code:result.code,timeout:result.timeout,summary}));
   if(result.code||result.timeout||!/DXVK COMPUTE CHECKS [1-9][0-9]* FAILURES 0/.test(result.output))throw Error('Synthetic DXVK compute regression failed');
