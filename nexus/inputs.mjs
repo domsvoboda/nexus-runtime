@@ -22,6 +22,7 @@ export function validateInputs(inputs){
     if(inputs.schema!==1||inputs.status!=='development'||inputs.channel!=='experimental')throw Error('Only development Experimental inputs are accepted');
     if(!hash64(inputs.verifiedAuxiliaryManifestSha256))throw Error('Missing verified auxiliary manifest pin');
     if(!/^registry\.gitlab\.steamos\.cloud\/proton\/steamrt4\/sdk\/x86_64@sha256:[a-f0-9]{64}$/.test(inputs.sdk))throw Error('SDK must be pinned by digest');
+    if(!/^registry\.gitlab\.steamos\.cloud\/proton\/steamrt4\/sdk\/arm64-llvm@sha256:[a-f0-9]{64}$/.test(inputs.sdkArm64))throw Error('ARM64 SDK must be pinned by digest');
     for(const name of ['proton','wine','xgameruntime'])if(!hash40(inputs.upstream?.[name]))throw Error('Unpinned upstream '+name);
     if(Object.keys(inputs.modules||{}).sort().join(',')!=='dxvk,vkd3d,vkd3d-proton')throw Error('Missing graphics source pins');
     for(const value of Object.values(inputs.modules))if(!hash40(value))throw Error('Unpinned graphics source');

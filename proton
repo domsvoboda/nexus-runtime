@@ -2141,7 +2141,9 @@ class Session:
                     f.write(json.dumps(app_config, indent=2))
                 self.env['FEX_APP_CONFIG'] = g_compatdata.fex_config_file
 
-            self.env["FEX_APP_CONFIG_LOCATION"] = os.path.join(g_proton.dist_dir, "share/fex-emu/")
+            if "FEX_APP_CONFIG_LOCATION" not in self.env:
+                self.env["FEX_APP_CONFIG_LOCATION"] = g_compatdata.path("fex-emu/")
+                makedirs(os.path.join(self.env["FEX_APP_CONFIG_LOCATION"], "AppConfig"))
 
     def run_proc(self, args, local_env=None):
         if local_env is None:

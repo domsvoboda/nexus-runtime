@@ -4,6 +4,7 @@
   "channel": "experimental",
   "verifiedAuxiliaryManifestSha256": "85020aaed8b15afce50e252c69a23709a6363cecc57084b766c3b4e888ff6ca7",
   "sdk": "registry.gitlab.steamos.cloud/proton/steamrt4/sdk/x86_64@sha256:6c1789cad862fd8ed9d46d71bbf8752bb7cb2336ab5e9680c0f0e3e7c88d77f1",
+  "sdkArm64": "registry.gitlab.steamos.cloud/proton/steamrt4/sdk/arm64-llvm@sha256:3a8199ffdd54c51f47e1b0d059e6fe583745214043f1f8c2e2e18377e72a3776",
   "upstream": {
     "proton": "7a94df49e4695fc101fd47d614166e69c43d9669",
     "wine": "7fc704ef49c50e9702c9983a5250d5738697bb04",
@@ -27,8 +28,8 @@
       "libs/vkd3d-shader/hlsl.l": "4bcde7ac8e4e43ea848483ca78dce9be0c2bf431398a912f53d339c6581791d5"
     }
   },
-  "requiresBackendVersion": "0.2.12",
-  "requiresLauncherVersion": "0.4.0",
+  "requiresBackendVersion": "0.2.13",
+  "requiresLauncherVersion": "0.4.1",
   "compatibilitySources": {
     "runtime-compat/wine-launcher.c": "b93a9669cc5b8420a79c74ecaee619d699c0105e54d1237770cdfed4ea7fe2a7",
     "runtime-compat/playfab-session.h": "a7bf5c391f58314439925e4095c31b6e93776609c0563a5df0198012799b80e3",
