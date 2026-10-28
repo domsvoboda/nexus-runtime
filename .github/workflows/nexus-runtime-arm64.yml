@@ -130,5 +130,7 @@ jobs:
             ${{ runner.temp }}/nexus-validation/win32/nexus-*/*.json
             ${{ runner.temp }}/nexus-validation/win32/nexus-*/*.log
             ${{ runner.temp }}/nexus-fixtures/fixtures.json
+            ${{ runner.temp }}/nexus-fixtures/win64/bin/*.exe
+            ${{ runner.temp }}/nexus-fixtures/win32/bin/*.exe
             ${{ runner.temp }}/nexus-output/built.json
           retention-days: 7

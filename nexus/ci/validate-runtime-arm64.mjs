@@ -40,12 +40,14 @@ async function entries(root){
 }
 const before=await entries(runtime);
 let passed=false;
-async function record(name,result,check){
+async function record(name,result,check,{fatal=true}={}){
   const log=work+'/'+name+'.log',text=(result.stdout||'')+(result.stderr||'')+(result.error?'\nERROR '+result.error.message:'');
   await fs.writeFile(log,text,{flag:'wx',mode:0o600});
   proof.results.push({name,status:result.status,signal:result.signal,error:result.error?.message,log,sha256:await fileHash(log)});
-  if(result.status!==0||result.signal||result.error||!check(text))throw Error('ARM64 gate failed: '+name+'; '+log);
-  console.log(name+' PASS');
+  const ok=result.status===0&&!result.signal&&!result.error&&check(text);
+  if(!ok&&fatal)throw Error('ARM64 gate failed: '+name+'; '+log);
+  console.log(name+(ok?' PASS':' FAIL'));
+  return ok;
 }
 try{
   // Layout: the launcher shim wraps the aarch64 loader and every PE module is a Wine builtin.
@@ -117,6 +119,8 @@ try{
   }
   const tools=await prepareValidationTools(files,work+'/candidate-tools',target.bin);
   const gateEnv={...sourceEnvironment(),PATH:tools+':'+files+'/'+target.bin+':'+process.env.PATH,LD_LIBRARY_PATH:files+'/lib/'+target.unixLibrary+':'+files+'/lib',FEX_APP_CONFIG_LOCATION:fexConfig+'/',HOME:work+'/home',PYTHONDONTWRITEBYTECODE:'1'};
+  // Run every C++ gate before failing, so one run reports all of them.
+  const failedGates=[];
   for(const [abi,arch]of [['win64','x86_64'],['win32','i386']]){
     const directory=work+'/'+abi,bin=directory+'/bin';await fs.mkdir(bin,{recursive:true});
     for(const name of await fs.readdir(fixtures+'/'+abi+'/bin'))if(name.endsWith('.exe'))await fs.copyFile(fixtures+'/'+abi+'/bin/'+name,bin+'/'+name,fs.constants.COPYFILE_EXCL);
@@ -128,9 +132,10 @@ try{
     await fs.copyFile(dll,bin+'/xgameruntime.dll',fs.constants.COPYFILE_EXCL);
     for(const gate of gates){
       const r=spawnSync(process.execPath,[scripts+'/test-'+gate+'.mjs',directory,...(gate==='component'?[]:[engine])],{cwd:work,env:gateEnv,encoding:'utf8',timeout:1800000,maxBuffer:16*1024*1024});
-      await record(abi+'-'+gate,{status:r.status,signal:r.signal,error:r.error,stdout:validationProcessOutput(r)},()=>true);
+      if(!await record(abi+'-'+gate,{status:r.status,signal:r.signal,error:r.error,stdout:validationProcessOutput(r)},()=>true,{fatal:false}))failedGates.push(abi+'-'+gate);
     }
   }
+  if(failedGates.length)throw Error('ARM64 gates failed: '+failedGates.join(', '));
   if(await fileHash(output+'/built.json')!==proof.builtSha256||await treeHash(runtime)!==proof.treeSha256){
     const after=await entries(runtime),changed=[...new Set([...before.keys(),...after.keys()])].filter(name=>before.get(name)!==after.get(name)).sort();
     await fs.writeFile(work+'/runtime-changes.log',changed.map(name=>name+' '+(before.get(name)??'-')+' -> '+(after.get(name)??'-')).join('\n')+'\n',{flag:'wx'});
