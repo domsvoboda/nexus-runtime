@@ -25,6 +25,7 @@ for(const name of ['GCC-runtime-copyright','MinGW-runtime-copyright','libxml2-CO
   const source=project+'/licenses/'+name,file=files+'/share/doc/nexus-runtime/'+name;
   try{await fs.copyFile(source,file,fs.constants.COPYFILE_EXCL);}catch(e){if(e.code!=='EEXIST'||await fileHash(file)!==await fileHash(source))throw e;}
 }
+if(await fileHash(files+'/share/doc/nexus-runtime/FEX-LICENSE')!==await fileHash(built.source+'/FEX/LICENSE'))throw Error('Pinned FEX notice missing or changed');
 await assertPortable(runtime);
 const proof={schema:1,arch:'arm64',scope:'exact ARM64 runtime, synthetic offline gates only',realGameTest:false,realAccountTest:false,realCloudTest:false,stableApproved:false,graph:built.graph,runtime,builtSha256:await fileHash(output+'/built.json'),treeSha256:await treeHash(runtime),fixtureProofSha256:await fileHash(fixtures+'/fixtures.json'),results:[]};
 const engine=files+'/'+target.bin+'/wine';
