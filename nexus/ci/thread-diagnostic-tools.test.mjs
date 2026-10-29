@@ -12,6 +12,7 @@ test('native diagnostic children never inherit tokens, accounts, profiles or pre
   assert.equal(env.HOME,'/private/work/home');assert.equal(env.WINEPREFIX,'/private/work/pfx');
   assert.equal(env.DISPLAY,':1');assert.equal(env.XAUTHORITY,'/private/xauth');
   assert.equal(env.FEX_APP_CONFIG_LOCATION,'/private/work/fex/');
+  assert.equal(env.LC_ALL,'C.UTF-8');
 });
 
 test('diagnostic capture and timeout target only the newly spawned process',async()=>{
