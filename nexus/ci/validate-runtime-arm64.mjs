@@ -64,7 +64,7 @@ try{
   layout.push('default_pfx_arm64 system32 components: '+Object.keys(built.metadata.components).length);
   const byArch=built.metadata.componentsByArch;
   if(Object.keys(byArch||{}).join()!=='aarch64-windows'||JSON.stringify(byArch['aarch64-windows'])!==JSON.stringify(built.metadata.components))throw Error('Launcher component contract differs');
-  for(const name of ['xgameruntime.dll','winhttp.dll','libnghttp2.dll','windows.web.dll','twinapi.appcore.dll','d3d8.dll','d3d9.dll','d3d10core.dll','d3d11.dll','dxgi.dll'])if(!byArch['aarch64-windows'][name])throw Error('Launcher component missing: '+name);
+  for(const name of ['xgameruntime.dll','winhttp.dll','libnghttp2.dll','libvkd3d-shader-1.dll','windows.web.dll','twinapi.appcore.dll','d3d8.dll','d3d9.dll','d3d10core.dll','d3d11.dll','dxgi.dll'])if(!byArch['aarch64-windows'][name])throw Error('Launcher component missing: '+name);
   layout.push('launcher contract componentsByArch.aarch64-windows');
   for(const [soname]of Object.entries(JSON.parse(await fs.readFile(project+'/runtime-media.lock.json','utf8')).libraries))if(elfMachine(await fs.readFile(files+'/lib/'+target.unixLibrary+'/'+soname))!=='aarch64')throw Error('Media library is not aarch64: '+soname);
   layout.push('aarch64 media libraries');
@@ -135,11 +135,10 @@ try{
       if(!await record(abi+'-'+gate,{status:r.status,signal:r.signal,error:r.error,stdout:validationProcessOutput(r)},()=>true,{fatal:false}))failedGates.push(abi+'-'+gate);
     }
   }
-  // The x86_64 validation's HTTP/2 and media suites. The HTTP/2 client stays
-  // x86_64 and runs as ARM64EC through FEX against the ARM64X winhttp/nghttp2;
-  // media checks the aarch64 GStreamer libav. The DXVK suite is not run yet:
-  // the ARM64X d3dcompiler_47 cannot compile structured buffer stores (E5017).
-  for(const [name,script,args]of [['http','run-http2-suite.mjs',[runtime,work]],['media','run-media-suite.mjs',[runtime,work+'/media']]]){
+  // The x86_64 validation's HTTP/2, media and graphics suites. The HTTP/2 and
+  // DXVK clients stay x86_64 and run as ARM64EC through FEX against the ARM64X
+  // winhttp/nghttp2, DXVK and vkd3d-shader; media checks the aarch64 libav.
+  for(const [name,script,args]of [['http','run-http2-suite.mjs',[runtime,work]],['media','run-media-suite.mjs',[runtime,work+'/media']],['graphics','run-dxvk-suite.mjs',[runtime,work]]]){
     const r=spawnSync(process.execPath,[project+'/runtime-tests/'+script,'--arch','arm64',...args],{cwd:work,env:gateEnv,encoding:'utf8',timeout:1800000,maxBuffer:16*1024*1024});
     if(!await record('arm64-'+name,{status:r.status,signal:r.signal,error:r.error,stdout:validationProcessOutput(r)},()=>true,{fatal:false}))failedGates.push('arm64-'+name);
     if(name==='http')for(const directory of (await fs.readdir(work)).filter(x=>x.startsWith('runtime-http2-'))){
@@ -150,8 +149,8 @@ try{
   if(failedGates.length)throw Error('ARM64 gates failed: '+failedGates.join(', '));
   // Recheck the x86_64 thresholds independently of each runner's exit status.
   const dirs=await fs.readdir(work),single=async(prefix,name)=>{const d=dirs.filter(x=>x.startsWith(prefix));if(d.length!==1)throw Error('Missing result group: '+prefix);return readJson(work+'/'+d[0]+'/'+name);};
-  const http=await single('runtime-http2-','results.json'),media=await readJson(work+'/media/results.json');
-  if(http.code!==0||http.timedOut||!http.summary.includes('SUMMARY checks=121 failures=0')||!media.h264||!media.aac||!media.bundledLibraries)throw Error('ARM64 HTTP/2 or media coverage incomplete');
+  const http=await single('runtime-http2-','results.json'),graphics=await single('runtime-dxvk-','result.json'),media=await readJson(work+'/media/results.json');
+  if(http.code!==0||http.timedOut||!http.summary.includes('SUMMARY checks=121 failures=0')||graphics.code!==0||graphics.timeout||!graphics.summary.some(x=>/^DXVK COMPUTE CHECKS 40 FAILURES 0\s*$/.test(x))||!media.h264||!media.aac||!media.bundledLibraries)throw Error('ARM64 HTTP/2, media or graphics coverage incomplete');
   if(await fileHash(output+'/built.json')!==proof.builtSha256||await treeHash(runtime)!==proof.treeSha256){
     const after=await entries(runtime),changed=[...new Set([...before.keys(),...after.keys()])].filter(name=>before.get(name)!==after.get(name)).sort();
     await fs.writeFile(work+'/runtime-changes.log',changed.map(name=>name+' '+(before.get(name)??'-')+' -> '+(after.get(name)??'-')).join('\n')+'\n',{flag:'wx'});

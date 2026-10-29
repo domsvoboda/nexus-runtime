@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { fetchMediaSource } from './media-source.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const lock = JSON.parse(await fs.readFile(path.join(root, 'runtime-media.lock.json'), 'utf8'));
@@ -31,8 +32,9 @@ if (!host) throw new Error('Unsupported media build host.');
 const run = (command, argv, cwd = work) => execFileSync(command, argv, { cwd, stdio: 'inherit', env: { ...process.env, LC_ALL: 'C' } });
 await fs.mkdir(work, { recursive: false });
 const sourceArchive = path.join(work, lock.archive);
-if (archive) await fs.copyFile(archive, sourceArchive);
-else run('curl', ['--proto', '=https', '--tlsv1.2', '--fail', '--location', '--silent', '--show-error', '--output', sourceArchive, lock.url]);
+let sourceTransport;
+if (archive) await fs.copyFile(archive, sourceArchive, fs.constants.COPYFILE_EXCL);
+else sourceTransport = await fetchMediaSource(lock, sourceArchive);
 if (sha256(await fs.readFile(sourceArchive)) !== lock.sha256) throw new Error('Pinned FFmpeg archive checksum mismatch.');
 const sourceDirectory = `ffmpeg-${lock.version}`;
 const listing = execFileSync('tar', ['-tJf', sourceArchive], { encoding: 'utf8', maxBuffer: 16_000_000 });
@@ -70,6 +72,7 @@ for (const [soname, filename] of Object.entries(lock.libraries)) {
 }
 await fs.writeFile(path.join(work, 'media-manifest.json'), JSON.stringify({
   source: lock.url, sourceSha256: lock.sha256, version: lock.version, triplet: host.triplet,
+  ...(sourceTransport ? {sourceTransport} : {}),
   license: 'LGPL-2.1-or-later', configure, maxGlibc: maxGlibc.join('.'), libraries,
 }, null, 2) + '\n');
 const bundleEntries = [lock.archive, 'media-manifest.json', `${sourceDirectory}/COPYING.LGPLv2.1`,

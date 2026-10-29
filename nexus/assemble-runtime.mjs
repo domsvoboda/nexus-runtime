@@ -26,9 +26,9 @@ for(const name of ['PlayFabGameSave.dll','gaming-services-version.exe','wine-lau
     await fs.writeFile(path.join(files,target.bin,'wine'),bytes,{flag:'wx',mode:0o755});
   }else await fs.writeFile(path.join(compat,name),bytes,{flag:'wx'});
 }
-// Proton builds its separate vkd3d shader DLL only for x86 PE targets; ARM64X
-// Wine uses its bundled copy, so the HLSL keyword patch is x86_64-only.
-const prefixComponents=['kernelbase.dll','xgameruntime.dll','winhttp.dll','mscoree.dll','windows.web.dll','twinapi.appcore.dll','libnghttp2.dll',...(target.primaryPe==='x86_64'?['libvkd3d-shader-1.dll']:[]),'d3d8.dll','d3d9.dll','d3d10core.dll','d3d11.dll','dxgi.dll'];
+// Every target ships the pinned vkd3d shader DLL (ARM64X on ARM64). The HLSL
+// keyword feature stays x86_64-only until ARM64 runs its contract probe.
+const prefixComponents=['kernelbase.dll','xgameruntime.dll','winhttp.dll','mscoree.dll','windows.web.dll','twinapi.appcore.dll','libnghttp2.dll','libvkd3d-shader-1.dll','d3d8.dll','d3d9.dll','d3d10core.dll','d3d11.dll','dxgi.dll'];
 for(const name of prefixComponents){
   const sub=name==='libvkd3d-shader-1.dll'?'vkd3d':['d3d8.dll','d3d9.dll','d3d10core.dll','d3d11.dll','dxgi.dll'].includes(name)?'wine/dxvk':'wine';
   const file=path.join(files,'lib',sub,target.primaryPe+'-windows',name),bytes=await fs.readFile(file);
