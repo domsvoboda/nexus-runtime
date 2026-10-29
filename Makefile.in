@@ -280,6 +280,22 @@ $(eval $(call rules-meson,gst_good,x86_64,unix))
 $(eval $(call rules-meson,gst_good,aarch64,unix))
 
 ##
+## gst-plugins-ugly (LGPL ASF demuxer, no GPL dependencies)
+##
+
+GST_UGLY_MESON_ARGS := \
+	-Dauto_features=disabled \
+	-Dasfdemux=enabled \
+	-Dgpl=disabled
+
+GST_UGLY_DEPENDS = gstreamer gst_base
+
+$(eval $(call rules-source,gst_ugly,$(SRCDIR)/gstreamer/subprojects/gst-plugins-ugly/))
+$(eval $(call rules-meson,gst_ugly,i386,unix))
+$(eval $(call rules-meson,gst_ugly,x86_64,unix))
+$(eval $(call rules-meson,gst_ugly,aarch64,unix))
+
+##
 ## gst-plugins-bad
 ##
 
@@ -1505,7 +1521,7 @@ endif
 ## default_pfx
 ##
 
-default_pfx: wine gst_good gst_bad gst_libav gst_plugins_rs lsteamclient steamexe vrclient wineopenxr $(WINEOPENXR64_JSON) dxvk dxvk-nvapi dxvk-igdext vkd3d-proton
+default_pfx: wine gst_good gst_bad gst_ugly gst_libav gst_plugins_rs lsteamclient steamexe vrclient wineopenxr $(WINEOPENXR64_JSON) dxvk dxvk-nvapi dxvk-igdext vkd3d-proton
 	find $(DST_LIBDIR)/wine -type f -execdir chmod a-w '{}' '+'
 	rm -rf $(abspath $(DIST_PREFIX))
 	rm -rf $(abspath $(DIST_PREFIX_ARM64))

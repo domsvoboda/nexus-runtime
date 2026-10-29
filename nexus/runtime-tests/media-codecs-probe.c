@@ -5,25 +5,26 @@
 int main(int argc, char **argv)
 {
     GstRegistry *registry;
-    GstElementFactory *h264, *aac;
+    static const char *required[] = {
+        "avdec_h264", "avdec_aac", "asfdemux", "avdec_wmv3", "avdec_wmapro"
+    };
+    unsigned int i;
 
     if (argc != 2 && argc != 3) return 2;
     gst_init(&argc, &argv);
     registry = gst_registry_get();
-    /* Unrelated optional plugins may fail to load on a host. Check the two
-     * required factories themselves instead of the aggregate scan result. */
     gst_registry_scan_path(registry, argv[1]);
-    h264 = gst_element_factory_find("avdec_h264");
-    aac = gst_element_factory_find("avdec_aac");
-    if (!h264 || !aac) {
-        fprintf(stderr, "Runtime is missing H.264 or AAC decoding.\n");
-        if (h264) gst_object_unref(h264);
-        if (aac) gst_object_unref(aac);
-        return 1;
+    /* A decoder alone cannot open an ASF file. Require both its container
+     * handler and the WMV/WMA decoder factories from the bundled plugins. */
+    for (i = 0; i < G_N_ELEMENTS(required); ++i) {
+        GstElementFactory *factory = gst_element_factory_find(required[i]);
+        if (!factory) {
+            fprintf(stderr, "Runtime is missing media component %s.\n", required[i]);
+            return 1;
+        }
+        gst_object_unref(factory);
     }
-    gst_object_unref(h264);
-    gst_object_unref(aac);
-    puts("Runtime H.264 and AAC GStreamer decoders are available.");
+    puts("Runtime H.264, AAC, ASF, WMV3 and WMA Pro GStreamer components are available.");
     if (argc == 3) {
         GstElement *player = gst_element_factory_make("playbin", NULL);
         GstElement *video_sink = gst_element_factory_make("fakesink", NULL);
