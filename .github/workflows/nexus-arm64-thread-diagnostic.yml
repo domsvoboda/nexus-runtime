@@ -1,0 +1,42 @@
+name: ARM64 threading diagnostic (no candidate build)
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/nexus-arm64-thread-diagnostic.yml
+      - nexus/ci/arm64-thread-diagnostic.mjs
+      - nexus/ci/thread-diagnostic-tools.mjs
+      - nexus/ci/thread-diagnostic-tools.test.mjs
+permissions:
+  contents: read
+jobs:
+  probe:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install bounded account-free diagnostic tools
+        timeout-minutes: 10
+        run: |
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 install -y --no-install-recommends gdb curl unzip xz-utils xvfb xauth libgnutls30t64 libfreetype6
+          sudo sysctl -w kernel.yama.ptrace_scope=0
+      - name: Probe exact fixture on a matching-source isolated diagnostic engine
+        run: xvfb-run -a node nexus/ci/arm64-thread-diagnostic.mjs "$RUNNER_TEMP/thread-diagnostic"
+      - name: Retain only account-free thread evidence, never prefixes or binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm64-thread-diagnostic-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/thread-diagnostic/results.json
+            ${{ runner.temp }}/thread-diagnostic/*.log
+            ${{ runner.temp }}/thread-diagnostic/*-gdb.txt
+          if-no-files-found: error
+          retention-days: 7

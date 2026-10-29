@@ -20,7 +20,7 @@ jobs:
           curl --fail --location --retry 2 --max-time 120 https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/actionlint.tar.gz"
           printf '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  %s/actionlint.tar.gz\n' "$RUNNER_TEMP" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
-          "$RUNNER_TEMP/actionlint" -shellcheck= -pyflakes= .github/workflows/nexus-source.yml .github/workflows/nexus-runtime.yml .github/workflows/nexus-runtime-arm64.yml
+          "$RUNNER_TEMP/actionlint" -shellcheck= -pyflakes= .github/workflows/nexus-source.yml .github/workflows/nexus-runtime.yml .github/workflows/nexus-runtime-arm64.yml .github/workflows/nexus-arm64-thread-diagnostic.yml
       - name: Install bounded source-test tools
         timeout-minutes: 12
         run: |
