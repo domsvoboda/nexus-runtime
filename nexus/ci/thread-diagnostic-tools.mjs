@@ -24,7 +24,7 @@ export async function diagnosticProbe(command,args,{env,cwd,log,debugLog,debugAf
   const capture=setTimeout(()=>{
     if(!birth||child.exitCode!==null||identity(child.pid)!==birth)return;
     debugged=true;
-    const result=captureDebugger?captureDebugger(child.pid):spawnSync('/usr/bin/gdb',['-q','-nx','-batch','-iex','set auto-load off','-iex','set debuginfod enabled off','-p',String(child.pid),'-ex','set pagination off','-ex','info threads','-ex','info sharedlibrary','-ex','thread apply all bt 32','-ex','thread apply all info registers','-ex','thread apply all x/32gx $sp','-ex','info proc mappings','-ex','detach'],{env,encoding:'utf8',timeout:20000,maxBuffer:8*1024*1024});
+    const result=captureDebugger?captureDebugger(child.pid):spawnSync('/usr/bin/gdb',['-q','-nx','-batch','-iex','set auto-load off','-iex','set debuginfod enabled off','-p',String(child.pid),'-ex','set pagination off','-ex','info threads','-ex','info sharedlibrary','-ex','thread apply all bt 32','-ex','thread apply all info registers','-ex','thread apply all -c x/24i $pc-16','-ex','thread apply all -c x/16gx $x18','-ex','thread apply all -c x/8gx $x0','-ex','thread apply all -c x/24i $x19-16','-ex','thread apply all -c x/2048gx $sp','-ex','info proc mappings','-ex','detach'],{env,encoding:'utf8',timeout:20000,maxBuffer:8*1024*1024});
     debugStatus=result.status??null;
     fs.writeFileSync(debugLog,(result.stdout||'')+(result.stderr||'')+(result.error?'\nDEBUGGER ERROR '+result.error.message:'')+'\n',{flag:'wx',mode:0o600});
   },debugAfter);

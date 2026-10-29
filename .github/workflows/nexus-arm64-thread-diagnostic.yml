@@ -40,5 +40,9 @@ jobs:
             ${{ runner.temp }}/thread-diagnostic/full-*.json
             ${{ runner.temp }}/thread-diagnostic/*.log
             ${{ runner.temp }}/thread-diagnostic/*-gdb.txt
+            ${{ runner.temp }}/thread-diagnostic/component-win32/nexus-component-test-*/*.log
+            ${{ runner.temp }}/thread-diagnostic/component-win32/nexus-component-test-*/results.json
+            ${{ runner.temp }}/thread-diagnostic/component-win64/nexus-component-test-*/*.log
+            ${{ runner.temp }}/thread-diagnostic/component-win64/nexus-component-test-*/results.json
           if-no-files-found: error
           retention-days: 7

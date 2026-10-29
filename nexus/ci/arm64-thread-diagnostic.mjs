@@ -95,7 +95,7 @@ try{
   if(boot.status!==0||boot.error||boot.signal)throw Error('Private diagnostic prefix failed to boot');
   for(const [label,,name]of probes)for(let trial=0;trial<4;trial++){
     const stem=label+'-'+trial;
-    const result=await diagnosticProbe(wine,[work+'/probes/'+name],{env:{...env,WINEDEBUG:'-all,+loaddll,err+sync,err+thread'},cwd:work+'/probes',log:work+'/'+stem+'.log',debugLog:work+'/'+stem+'-gdb.txt'});
+    const result=await diagnosticProbe(wine,[work+'/probes/'+name],{env:{...env,WINEDEBUG:'-all,+loaddll,+seh,err+sync,err+thread'},cwd:work+'/probes',log:work+'/'+stem+'.log',debugLog:work+'/'+stem+'-gdb.txt'});
     report.results.push({label,trial,...result,logSha256:await fileHash(work+'/'+stem+'.log')});
     console.log(JSON.stringify({label,trial,...result}));
     if(result.debugged||result.code!==0)break;
