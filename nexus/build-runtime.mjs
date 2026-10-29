@@ -8,6 +8,7 @@ import {assembleRuntime} from './assemble-runtime.mjs';
 import {requireShaderVersion} from './shader-version.mjs';
 import {targetArgument} from './target.mjs';
 import {llvmMingwPin} from './llvm-mingw.mjs';
+import {prepareFexSource,verifyPreparedFex} from './fex-source.mjs';
 if(process.env.GITHUB_REF&&process.env.GITHUB_REF!=='refs/heads/main')throw Error('Distribution builds are main-only');
 const {target,args}=targetArgument(process.argv.slice(2));
 const [auxArg,workArg,outputArg,resumeArg]=args;
@@ -17,7 +18,7 @@ const {inputs}=await verifyInputs(),lockHash=sha256(await fs.readFile(path.join(
 const verifiedAux=await verifyAuxiliary(aux,inputs,target),auxiliary=verifiedAux.manifest;
 if(target.name==='arm64'&&llvmMingwPin().sha256!==auxiliary.toolchain.sha256)throw Error('Auxiliary toolchain differs from the workflow pin');
 const engine=sdkContainerOption(process.env.NEXUS_CONTAINER_ENGINE).split('=')[1],jobs=sdkBuildJobs(process.env.NEXUS_BUILD_JOBS);
-const source=repository,wine=path.join(source,'wine'),shader=path.join(source,'vkd3d');
+const source=repository,wine=path.join(source,'wine'),shader=path.join(source,'vkd3d'),fex=path.join(source,'FEX');
 const stateFile=path.join(work,'prepared.json'),build=path.join(work,'sdk-build');
 let graph,name,epoch;
 if(!resume){
@@ -29,6 +30,7 @@ if(!resume){
   requireShaderVersion(configure,inputs.shader.version);
   run('git',['apply','--check',path.join(project,inputs.shader.file)],shader);
   run('git',['apply',path.join(project,inputs.shader.file)],shader);
+  await prepareFexSource(fex,inputs.fex);
   await fs.mkdir(path.join(wine,'include/nghttp2'));
   for(const header of Object.keys(auxiliary.headers))await fs.copyFile(path.join(aux,'components/nghttp2',header),path.join(wine,'include/nghttp2',header),fs.constants.COPYFILE_EXCL);
   await fs.mkdir(build);
@@ -41,8 +43,8 @@ if(!resume){
   if(run('git',['rev-parse','HEAD'],source,{capture:true}).trim()!==graph.proton||run('git',['rev-parse','refs/remotes/origin/main'],source,{capture:true}).trim()!==graph.proton)throw Error('Resume requires the exact selected main source');
   verifySdkResumeMakefile(await fs.readFile(path.join(build,'Makefile'),'utf8'),{source,name,sdk,engine,arch:target.name});
 }
-// Reject edits even on resume. The one checked shader patch and the two
-// checksum-verified nghttp2 headers are the only prepared source differences.
+// Reject edits even on resume. Only the exact checksum-verified shader/FEX
+// patches and nghttp2 headers may differ from the pinned source graph.
 for(const [directory,expected]of [[source,graph.proton],[wine,graph.wine],[path.join(wine,'dlls/xgameruntime'),graph.xgameruntime]]){
   if(run('git',['rev-parse','HEAD'],directory,{capture:true}).trim()!==expected||run('git',['diff','--ignore-submodules=all','HEAD'],directory,{capture:true}).trim())throw Error('Prepared fork source changed');
 }
@@ -52,8 +54,9 @@ for(const entry of graph.submodules){
   if(!match)throw Error('Malformed prepared source graph');
   const directory=path.join(source,match[2]);
   if(run('git',['rev-parse','HEAD'],directory,{capture:true}).trim()!==match[1])throw Error('Prepared dependency checkout changed: '+match[2]);
-  if(match[2]!=='vkd3d'&&run('git',['diff','--ignore-submodules=all','HEAD'],directory,{capture:true}).trim())throw Error('Prepared dependency source changed: '+match[2]);
+  if(!['vkd3d','FEX'].includes(match[2])&&run('git',['diff','--ignore-submodules=all','HEAD'],directory,{capture:true}).trim())throw Error('Prepared dependency source changed: '+match[2]);
 }
+await verifyPreparedFex(fex,inputs.fex);
 const changed=run('git',['diff','--name-only','HEAD'],shader,{capture:true}).trim().split('\n').filter(Boolean).sort();
 if(changed.join(',')!==Object.keys(inputs.shader.expectedSources).sort().join(','))throw Error('Unexpected shader changes');
 for(const [file,expected]of Object.entries(inputs.shader.expectedSources))if(sha256(await fs.readFile(path.join(shader,file)))!==expected)throw Error('Shader source checksum mismatch');
