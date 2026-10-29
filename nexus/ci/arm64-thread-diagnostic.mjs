@@ -3,8 +3,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {execFileSync,spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {fileHash,treeHash,assertPortable} from './provenance.mjs';
 import {diagnosticEnvironment,diagnosticProbe} from './thread-diagnostic-tools.mjs';
+import {prepareValidationTools} from './validation-tools.mjs';
 if(process.arch!=='arm64'||process.argv.length!==3)throw Error('Native ARM64 and NEW_WORK_DIRECTORY required');
 const work=path.resolve(process.argv[2]);await fs.mkdir(work,{recursive:false,mode:0o700});
 const pins={
@@ -18,9 +20,9 @@ async function download(pin,file){
 await download(pins.engine,work+'/engine.zip');await download(pins.fixture,work+'/fixture.zip');
 const zipNames=execFileSync('unzip',['-Z1',work+'/engine.zip'],{encoding:'utf8'}).trim().split('\n');
 if(zipNames.some(name=>name.includes('/')||name.includes('..')))throw Error('Unexpected diagnostic artifact layout');
-const binary='nexus-runtime-11.0-experimental-arm64-g6b03f0d9-aarch64.tar.xz';
+const binary='nexus-runtime-11.0-experimental-arm64-g6b03f0d9-aarch64.tar.xz',source=binary.replace('-aarch64.tar.xz','-source.tar.xz');
 if(!zipNames.includes(binary)||!zipNames.includes('candidate.json'))throw Error('Missing diagnostic engine');
-await fs.mkdir(work+'/engine-input');execFileSync('unzip',['-q',work+'/engine.zip','candidate.json',binary,'-d',work+'/engine-input']);
+await fs.mkdir(work+'/engine-input');execFileSync('unzip',['-q',work+'/engine.zip','candidate.json',binary,source,'-d',work+'/engine-input']);
 const manifest=JSON.parse(await fs.readFile(work+'/engine-input/candidate.json','utf8'));
 if(manifest.commit!==pins.engine.commit||manifest.repository!=='indiesaudi/nexus-runtime'||manifest.arch!=='arm64'||manifest.promotable!==false||manifest.validation.nativeGateCount!==16||manifest.validation.stableApproved!==false)throw Error('Not the pinned non-promotable diagnostic engine');
 if(manifest.sourceGraph.wine!=='9529a9fcd3cc8d2101fa44de604c2ac01c452993'||manifest.sourceGraph.xgameruntime!=='5539e7d23d2d2c49f8547c9b9721fb7bc59139c1')throw Error('Diagnostic dependency graph differs');
@@ -28,6 +30,7 @@ if(!manifest.sourceGraph.submodules.some(line=>line.startsWith(' 5285020de0b30db
 const inputs=JSON.parse(await fs.readFile(new URL('../inputs.lock.json',import.meta.url),'utf8'));
 if(manifest.sdk!==inputs.sdkArm64)throw Error('Diagnostic SDK differs');
 if(await fileHash(work+'/engine-input/'+binary)!==manifest.files.find(item=>item.name===binary)?.sha256)throw Error('Changed engine tarball');
+if(await fileHash(work+'/engine-input/'+source)!==manifest.files.find(item=>item.name===source)?.sha256)throw Error('Changed diagnostic corresponding source');
 const top=binary.replace('-aarch64.tar.xz',''),names=execFileSync('tar',['-tJf',work+'/engine-input/'+binary],{encoding:'utf8',maxBuffer:64*1024*1024}).trim().split('\n');
 if(names.some(name=>path.isAbsolute(name)||name.split('/').includes('..')||name.split('/')[0]!==top))throw Error('Unsafe engine archive');
 await fs.mkdir(work+'/engine');execFileSync('tar',['-xJf',work+'/engine-input/'+binary,'--same-permissions','-C',work+'/engine']);
@@ -57,12 +60,42 @@ for(const [drive,target]of [['c:','../drive_c'],['z:','/']])try{await fs.symlink
 const env=diagnosticEnvironment(files,work),wine=files+'/bin-arm64/wine',server=files+'/bin-arm64/wineserver';
 const report={schema:1,scope:'diagnostic only, different Proton revision with identical pinned Wine/XGameRuntime/FEX; not candidate approval',realGameTest:false,realAccountTest:false,realCloudTest:false,promotable:false,stableApproved:false,pins,engineGraph:manifest.sourceGraph,results:[]};
 try{
+  // Match the failed component gate's fresh (not template-seeded) prefixes and
+  // full execution order. Intercept only the two observed stalled probes.
+  const script=execFileSync('tar',['-xJOf',work+'/engine-input/'+source,'source/wine/dlls/xgameruntime/scripts/test-component.mjs'],{timeout:120000,maxBuffer:4*1024*1024});
+  const config=execFileSync('tar',['-xJOf',work+'/engine-input/'+source,'source/wine/dlls/xgameruntime/tests/Nexus/MicrosoftGame.config'],{timeout:120000,maxBuffer:1024*1024});
+  await fs.writeFile(work+'/original-component.mjs',script,{flag:'wx'});
+  if(await fileHash(work+'/original-component.mjs')!=='8046ca2706e96cafd5a320b22e268b26e45e1c65a67d8e37a895c5d8cf90208f')throw Error('Component script differs from pinned XGameRuntime');
+  await fs.writeFile(work+'/component.mjs',script.toString('utf8').replaceAll('xgameruntime=n','xgameruntime=b'),{flag:'wx'});
+  const tools=await prepareValidationTools(files,work+'/full-tools','bin-arm64');
+  const wrapper=fileURLToPath(new URL('./thread-diagnostic-wine-wrapper.mjs',import.meta.url));
+  const quote=value=>{if(value.includes("'"))throw Error('Unsupported diagnostic path');return "'"+value+"'";};
+  await fs.writeFile(tools+'/wine','#!/bin/sh\nexec '+quote(process.execPath)+' '+quote(wrapper)+' '+quote(wine)+' '+quote(work)+' "$@"\n',{mode:0o700});
+  const fixtureNames=execFileSync('unzip',['-Z1',work+'/fixture.zip'],{encoding:'utf8'}).trim().split('\n');
+  const fullEnv={...env,PATH:tools+':'+env.PATH};delete fullEnv.WINEDLLPATH;
+  for(const [abi,arch]of [['win64','x86_64'],['win32','i386']]){
+    const directory=work+'/component-'+abi,bin=directory+'/bin';await fs.mkdir(bin,{recursive:true});
+    for(const member of fixtureNames.filter(name=>new RegExp('^nexus-fixtures/'+abi+'/bin/[A-Za-z0-9_.-]+\\.exe$').test(name))){
+      const bytes=execFileSync('unzip',['-p',work+'/fixture.zip',member],{maxBuffer:32*1024*1024});
+      await fs.writeFile(bin+'/'+path.basename(member),bytes,{flag:'wx'});
+    }
+    await fs.copyFile(files+'/lib/wine/'+arch+'-windows/xgameruntime.dll',bin+'/xgameruntime.dll',fs.constants.COPYFILE_EXCL);
+    await fs.writeFile(bin+'/MicrosoftGame.config',config,{flag:'wx'});
+    const result=spawnSync(process.execPath,[work+'/component.mjs',directory],{cwd:work,env:fullEnv,encoding:'utf8',timeout:240000,maxBuffer:8*1024*1024});
+    await fs.writeFile(work+'/full-'+abi+'.log',(result.stdout||'')+(result.stderr||'')+(result.error?'\n'+result.error.message:''),{flag:'wx'});
+    report.results.push({label:'full-'+abi,code:result.status,signal:result.signal,error:result.error?.message});
+    console.log(JSON.stringify(report.results.at(-1)));
+    for(const child of (await fs.readdir(directory)).filter(name=>name.startsWith('nexus-component-test-'))){
+      const scoped={...fullEnv,WINEPREFIX:directory+'/'+child+'/pfx'};
+      spawnSync(server,['-k'],{env:scoped,timeout:10000,stdio:'ignore'});spawnSync(server,['-w'],{env:scoped,timeout:10000,stdio:'ignore'});
+    }
+  }
   const boot=spawnSync(wine,['wineboot','-u'],{env,cwd:work,encoding:'utf8',timeout:60000});
   await fs.writeFile(work+'/boot.log',(boot.stdout||'')+(boot.stderr||''),{flag:'wx'});
   if(boot.status!==0||boot.error||boot.signal)throw Error('Private diagnostic prefix failed to boot');
   for(const [label,,name]of probes)for(let trial=0;trial<4;trial++){
     const stem=label+'-'+trial;
-    const result=await diagnosticProbe(wine,[work+'/probes/'+name],{env,cwd:work+'/probes',log:work+'/'+stem+'.log',debugLog:work+'/'+stem+'-gdb.txt'});
+    const result=await diagnosticProbe(wine,[work+'/probes/'+name],{env:{...env,WINEDEBUG:'-all,+loaddll,err+sync,err+thread'},cwd:work+'/probes',log:work+'/'+stem+'.log',debugLog:work+'/'+stem+'-gdb.txt'});
     report.results.push({label,trial,...result,logSha256:await fileHash(work+'/'+stem+'.log')});
     console.log(JSON.stringify({label,trial,...result}));
     if(result.debugged||result.code!==0)break;

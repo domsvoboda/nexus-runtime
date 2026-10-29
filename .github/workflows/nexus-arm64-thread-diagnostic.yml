@@ -6,6 +6,7 @@ on:
       - .github/workflows/nexus-arm64-thread-diagnostic.yml
       - nexus/ci/arm64-thread-diagnostic.mjs
       - nexus/ci/thread-diagnostic-tools.mjs
+      - nexus/ci/thread-diagnostic-wine-wrapper.mjs
       - nexus/ci/thread-diagnostic-tools.test.mjs
 permissions:
   contents: read
@@ -36,6 +37,7 @@ jobs:
           name: arm64-thread-diagnostic-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/thread-diagnostic/results.json
+            ${{ runner.temp }}/thread-diagnostic/full-*.json
             ${{ runner.temp }}/thread-diagnostic/*.log
             ${{ runner.temp }}/thread-diagnostic/*-gdb.txt
           if-no-files-found: error
