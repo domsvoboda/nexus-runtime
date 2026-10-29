@@ -29,6 +29,13 @@
     }
   },
   "requiresBackendVersion": "0.2.13",
+  "fex": {
+    "commit": "5285020de0b30dbdae7b44d0d83541af2d13d002",
+    "file": "patches/fex-overcommit-release-order.patch",
+    "sha256": "78fdcc43c148c9eb85aad8f80eb1e161d29169c93b4e5d8d529559268a479bdd",
+    "originalSha256": "93338457a4d2cc8701f697af97244f58d94ca614251add174ee98f8c4532d113",
+    "resultSha256": "beaeaa46ce47899138e463193b1808f956ba29f6c4f9f609235718c7c9562a80"
+  },
   "requiresLauncherVersion": "0.4.1",
   "compatibilitySources": {
     "runtime-compat/wine-launcher.c": "b93a9669cc5b8420a79c74ecaee619d699c0105e54d1237770cdfed4ea7fe2a7",
