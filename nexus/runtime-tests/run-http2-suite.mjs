@@ -6,9 +6,13 @@ import http2 from 'node:http2';
 import { gzipSync, deflateRawSync } from 'node:zlib';
 import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-const [runtimeArg, workArg] = process.argv.slice(2);
-if (!runtimeArg || !workArg || process.argv.length !== 4) throw new Error('Usage: run-http2-suite.mjs RUNTIME WORK_PARENT');
+import { targetArgument } from '../target.mjs';
+// --arch arm64 runs the same x86_64 client as ARM64EC under FEX against the ARM64X modules.
+const { target, args } = targetArgument(process.argv.slice(2));
+const [runtimeArg, workArg] = args;
+if (!runtimeArg || !workArg || args.length !== 2) throw new Error('Usage: run-http2-suite.mjs [--arch ARCH] RUNTIME WORK_PARENT');
 const files = path.join(await fs.realpath(runtimeArg), 'files');
+const slow = target.name === 'x86_64' ? 1 : 4;
 const root = await fs.mkdtemp(path.join(await fs.realpath(workArg), 'runtime-http2-'));
 await fs.chmod(root, 0o700);
 const prefix = path.join(root, 'pfx');
@@ -75,12 +79,12 @@ server.on('request', (request, response) => {
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const env = { ...process.env, WINEPREFIX: prefix, XODUS_RUNTIME_TEST_PREFIX: prefix, WINEARCH: 'win64', WINEDEBUG: '-all,err+all',
-  LD_LIBRARY_PATH: `/usr/lib:${path.join(files, 'lib/x86_64-linux-gnu')}`, WINEDLLPATH: path.join(files, 'lib/wine'),
+  LD_LIBRARY_PATH: `/usr/lib:${path.join(files, 'lib', target.unixLibrary)}`, WINEDLLPATH: path.join(files, 'lib/wine'),
   WINEDLLOVERRIDES: 'winemenubuilder.exe=d;mshtml=;mscoree=;winhttp=b;libnghttp2=n' };
 for (const key of Object.keys(env)) if (/^(XUSER_|NEXUS_|XGAMERUNTIME_|XODUS_(?!RUNTIME_TEST_PREFIX)|STEAM_COMPAT_|SteamAppId$|SteamGameId$|LD_PRELOAD$|http_proxy$|https_proxy$|all_proxy$|no_proxy$)/i.test(key)) delete env[key];
-const wine = path.join(files, 'bin/wine');
-const wineServer = path.join(files, 'bin/wineserver');
-function run(args, timeout = 45000) {
+const wine = path.join(files, target.bin, 'wine');
+const wineServer = path.join(files, target.bin, 'wineserver');
+function run(args, timeout = 45000 * slow) {
   return new Promise((resolve, reject) => {
     const child = spawn(wine, args, { env, stdio: ['ignore', 'pipe', 'pipe'] }); let output = '', timedOut = false;
     const collect = b => { if (output.length < 512000) output += b.toString().slice(0, 512000 - output.length); };
@@ -95,9 +99,9 @@ try {
   await fs.writeFile(path.join(root, 'wineboot.log'), boot.output, { mode: 0o600 });
   if (boot.code || boot.timedOut) throw new Error(`Disposable wineboot failed; see ${root}`);
   for (const name of ['winhttp.dll', 'libnghttp2.dll']) {
-    const target = path.join(prefix, 'drive_c/windows/system32', name);
-    await fs.copyFile(path.join(files, 'lib/wine/x86_64-windows', name), `${target}.new`, fs.constants.COPYFILE_EXCL);
-    await fs.rename(`${target}.new`, target);
+    const destination = path.join(prefix, 'drive_c/windows/system32', name);
+    await fs.copyFile(path.join(files, 'lib/wine', target.primaryPe + '-windows', name), `${destination}.new`, fs.constants.COPYFILE_EXCL);
+    await fs.rename(`${destination}.new`, destination);
   }
   const result = await run([executable, String(server.address().port), path.join(root, 'server.der')]);
   await fs.writeFile(path.join(root, 'result.log'), result.output, { mode: 0o600 });

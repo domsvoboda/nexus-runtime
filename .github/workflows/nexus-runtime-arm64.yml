@@ -72,7 +72,7 @@ jobs:
         timeout-minutes: 15
         run: |
           sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 install -y --no-install-recommends build-essential ccache rsync file curl xz-utils xvfb xauth
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 install -y --no-install-recommends build-essential ccache rsync file curl xz-utils xvfb xauth gcc-mingw-w64-x86-64 openssl pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-0
       - uses: actions/download-artifact@v4
         with:
           name: nexus-auxiliary-arm64
@@ -104,7 +104,7 @@ jobs:
         run: ccache --show-stats
       - name: Compile fresh synthetic fixtures in the same pinned ARM64 SDK
         run: node nexus/ci/build-fixtures.mjs "$RUNNER_TEMP/nexus-output" "$RUNNER_TEMP/nexus-fixtures"
-      - name: Validate ARM64 layout, module loading and C++ runtime gates under FEX
+      - name: Validate ARM64 layout, module loading, C++ runtime gates, HTTP/2 and media under FEX
         run: xvfb-run -a node nexus/ci/validate-runtime-arm64.mjs "$RUNNER_TEMP/nexus-output" "$RUNNER_TEMP/nexus-fixtures" "$RUNNER_TEMP/nexus-validation"
       - name: Package validated bytes and corresponding source only
         run: node nexus/ci/package-runtime-arm64.mjs "$RUNNER_TEMP/nexus-output" "$RUNNER_TEMP/nexus-validation"
@@ -129,6 +129,9 @@ jobs:
             ${{ runner.temp }}/nexus-validation/win64/nexus-*/*.log
             ${{ runner.temp }}/nexus-validation/win32/nexus-*/*.json
             ${{ runner.temp }}/nexus-validation/win32/nexus-*/*.log
+            ${{ runner.temp }}/nexus-validation/runtime-http2-*/*.json
+            ${{ runner.temp }}/nexus-validation/runtime-http2-*/*.log
+            ${{ runner.temp }}/nexus-validation/media/results.json
             ${{ runner.temp }}/nexus-fixtures/fixtures.json
             ${{ runner.temp }}/nexus-fixtures/win64/bin/*.exe
             ${{ runner.temp }}/nexus-fixtures/win32/bin/*.exe

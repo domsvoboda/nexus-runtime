@@ -4,11 +4,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { targetArgument } from '../target.mjs';
 
-if (process.argv.length !== 4) throw new Error('Usage: run-media-suite.mjs RUNTIME_DIRECTORY WORK_DIRECTORY');
-const runtime = path.resolve(process.argv[2]);
-const work = path.resolve(process.argv[3]);
-const libraryDir = path.join(runtime, 'files/lib/x86_64-linux-gnu');
+const { target, args } = targetArgument(process.argv.slice(2));
+if (args.length !== 2) throw new Error('Usage: run-media-suite.mjs [--arch ARCH] RUNTIME_DIRECTORY WORK_DIRECTORY');
+const runtime = path.resolve(args[0]);
+const work = path.resolve(args[1]);
+const libraryDir = path.join(runtime, 'files/lib', target.unixLibrary);
 const pluginDir = path.join(libraryDir, 'gstreamer-1.0');
 const plugin = path.join(pluginDir, 'libgstlibav.so');
 await fs.mkdir(work, { recursive: true });
