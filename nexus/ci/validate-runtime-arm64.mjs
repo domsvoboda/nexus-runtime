@@ -135,7 +135,23 @@ try{
       if(!await record(abi+'-'+gate,{status:r.status,signal:r.signal,error:r.error,stdout:validationProcessOutput(r)},()=>true,{fatal:false}))failedGates.push(abi+'-'+gate);
     }
   }
+  // The x86_64 validation's HTTP/2 and media suites. The HTTP/2 client stays
+  // x86_64 and runs as ARM64EC through FEX against the ARM64X winhttp/nghttp2;
+  // media checks the aarch64 GStreamer libav. The DXVK suite is not run yet:
+  // the ARM64X d3dcompiler_47 cannot compile structured buffer stores (E5017).
+  for(const [name,script,args]of [['http','run-http2-suite.mjs',[runtime,work]],['media','run-media-suite.mjs',[runtime,work+'/media']]]){
+    const r=spawnSync(process.execPath,[project+'/runtime-tests/'+script,'--arch','arm64',...args],{cwd:work,env:gateEnv,encoding:'utf8',timeout:1800000,maxBuffer:16*1024*1024});
+    if(!await record('arm64-'+name,{status:r.status,signal:r.signal,error:r.error,stdout:validationProcessOutput(r)},()=>true,{fatal:false}))failedGates.push('arm64-'+name);
+    if(name==='http')for(const directory of (await fs.readdir(work)).filter(x=>x.startsWith('runtime-http2-'))){
+      const drained=spawnSync(files+'/'+target.bin+'/wineserver',['-w'],{env:{...gateEnv,WINEPREFIX:work+'/'+directory+'/pfx'},timeout:60000,stdio:'ignore'});
+      if(drained.status!==0||drained.error||drained.signal)failedGates.push('arm64-http-drain');
+    }
+  }
   if(failedGates.length)throw Error('ARM64 gates failed: '+failedGates.join(', '));
+  // Recheck the x86_64 thresholds independently of each runner's exit status.
+  const dirs=await fs.readdir(work),single=async(prefix,name)=>{const d=dirs.filter(x=>x.startsWith(prefix));if(d.length!==1)throw Error('Missing result group: '+prefix);return readJson(work+'/'+d[0]+'/'+name);};
+  const http=await single('runtime-http2-','results.json'),media=await readJson(work+'/media/results.json');
+  if(http.code!==0||http.timedOut||!http.summary.includes('SUMMARY checks=121 failures=0')||!media.h264||!media.aac||!media.bundledLibraries)throw Error('ARM64 HTTP/2 or media coverage incomplete');
   if(await fileHash(output+'/built.json')!==proof.builtSha256||await treeHash(runtime)!==proof.treeSha256){
     const after=await entries(runtime),changed=[...new Set([...before.keys(),...after.keys()])].filter(name=>before.get(name)!==after.get(name)).sort();
     await fs.writeFile(work+'/runtime-changes.log',changed.map(name=>name+' '+(before.get(name)??'-')+' -> '+(after.get(name)??'-')).join('\n')+'\n',{flag:'wx'});
