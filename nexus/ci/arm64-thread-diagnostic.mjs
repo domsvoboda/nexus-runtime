@@ -37,11 +37,11 @@ await fs.mkdir(work+'/engine');execFileSync('tar',['-xJf',work+'/engine-input/'+
 const runtime=work+'/engine/'+top,files=runtime+'/files';await assertPortable(runtime);
 if(await treeHash(runtime)!==manifest.validation.treeSha256)throw Error('Diagnostic runtime differs from validated bytes');
 await fs.mkdir(work+'/probes');
-const probes=[['device32','win32','nexus_user-device-association.exe','6c978f3a6e1d1df7d0ebe995ce373f116d8e9b6159bb15eabffc0135101bd00f'],['close64','win64','nexus_taskqueue-close.exe','d8d29d64fe8e85ce7d687ca704a282f5c4c269c315001196b0c348f772ea1fd5']];
-for(const [,abi,name,hash]of probes){
+const probes=[['device32','win32','nexus_user-device-association.exe','6c978f3a6e1d1df7d0ebe995ce373f116d8e9b6159bb15eabffc0135101bd00f'],['close64','win64','nexus_taskqueue-close.exe','d8d29d64fe8e85ce7d687ca704a282f5c4c269c315001196b0c348f772ea1fd5'],['close32','win32','nexus_taskqueue-close.exe','8d3228735d3465311b0706ef67806aaa3003c7fb2247b98e67555bdf7fd998df']];
+for(const [label,abi,name,hash]of probes){
   const bytes=execFileSync('unzip',['-p',work+'/fixture.zip','nexus-fixtures/'+abi+'/bin/'+name],{maxBuffer:32*1024*1024});
-  await fs.writeFile(work+'/probes/'+name,bytes,{flag:'wx'});
-  if(await fileHash(work+'/probes/'+name)!==hash)throw Error('Wrong exact test fixture');
+  await fs.writeFile(work+'/probes/'+label+'.exe',bytes,{flag:'wx'});
+  if(await fileHash(work+'/probes/'+label+'.exe')!==hash)throw Error('Wrong exact test fixture');
 }
 await fs.mkdir(work+'/home',{mode:0o700});await fs.cp(files+'/share/fex-emu',work+'/fex',{recursive:true,errorOnExist:true,force:false});
 const builtin=/\/lib\/wine\/(?:i386|x86_64|aarch64)-(?:unix|windows)$/;
@@ -93,9 +93,9 @@ try{
   const boot=spawnSync(wine,['wineboot','-u'],{env,cwd:work,encoding:'utf8',timeout:60000});
   await fs.writeFile(work+'/boot.log',(boot.stdout||'')+(boot.stderr||''),{flag:'wx'});
   if(boot.status!==0||boot.error||boot.signal)throw Error('Private diagnostic prefix failed to boot');
-  for(const [label,,name]of probes)for(let trial=0;trial<4;trial++){
+  for(const [label]of probes)for(let trial=0;trial<(label==='close32'?16:4);trial++){
     const stem=label+'-'+trial;
-    const result=await diagnosticProbe(wine,[work+'/probes/'+name],{env:{...env,WINEDEBUG:'-all,+loaddll,+seh,err+sync,err+thread'},cwd:work+'/probes',log:work+'/'+stem+'.log',debugLog:work+'/'+stem+'-gdb.txt'});
+    const result=await diagnosticProbe(wine,[work+'/probes/'+label+'.exe'],{env:{...env,WINEDEBUG:'-all,+loaddll,+seh,err+sync,err+thread'},cwd:work+'/probes',log:work+'/'+stem+'.log',debugLog:work+'/'+stem+'-gdb.txt'});
     report.results.push({label,trial,...result,logSha256:await fileHash(work+'/'+stem+'.log')});
     console.log(JSON.stringify({label,trial,...result}));
     if(result.debugged||result.code!==0)break;
