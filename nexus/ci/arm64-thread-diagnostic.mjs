@@ -7,7 +7,8 @@ import {fileURLToPath} from 'node:url';
 import {fileHash,treeHash,assertPortable} from './provenance.mjs';
 import {diagnosticEnvironment,diagnosticProbe} from './thread-diagnostic-tools.mjs';
 import {prepareValidationTools} from './validation-tools.mjs';
-if(process.arch!=='arm64'||process.argv.length!==3)throw Error('Native ARM64 and NEW_WORK_DIRECTORY required');
+if(process.arch!=='arm64'||process.argv.length<3||process.argv.length>4||process.argv[3]&&process.argv[3]!=='--bootstrap-only')throw Error('Native ARM64 and NEW_WORK_DIRECTORY [--bootstrap-only] required');
+const bootstrapOnly=process.argv[3]==='--bootstrap-only';
 const work=path.resolve(process.argv[2]);await fs.mkdir(work,{recursive:false,mode:0o700});
 const pins={
   engine:{url:'https://nightly.link/indiesaudi/nexus-runtime/actions/runs/40840830196/nexus-runtime-arm64.zip',sha256:'f4f8c4a1f05a0dca4af3bc463a580f5891d9bfd8a0d66595c411964586c02415',commit:'6b03f0d9f2af39914df60d9a25f8c822936ccf2b'},
@@ -17,7 +18,7 @@ async function download(pin,file){
   execFileSync('curl',['--proto','=https','--proto-redir','=https','--tlsv1.2','--fail','--location','--silent','--show-error','--connect-timeout','15','--max-time','180','--output',file,pin.url],{stdio:'inherit',timeout:190000});
   if(await fileHash(file)!==pin.sha256)throw Error('Diagnostic download checksum mismatch');
 }
-await download(pins.engine,work+'/engine.zip');await download(pins.fixture,work+'/fixture.zip');
+await download(pins.engine,work+'/engine.zip');if(!bootstrapOnly)await download(pins.fixture,work+'/fixture.zip');
 const zipNames=execFileSync('unzip',['-Z1',work+'/engine.zip'],{encoding:'utf8'}).trim().split('\n');
 if(zipNames.some(name=>name.includes('/')||name.includes('..')))throw Error('Unexpected diagnostic artifact layout');
 const binary='nexus-runtime-11.0-experimental-arm64-g6b03f0d9-aarch64.tar.xz',source=binary.replace('-aarch64.tar.xz','-source.tar.xz');
@@ -38,7 +39,7 @@ const runtime=work+'/engine/'+top,files=runtime+'/files';await assertPortable(ru
 if(await treeHash(runtime)!==manifest.validation.treeSha256)throw Error('Diagnostic runtime differs from validated bytes');
 await fs.mkdir(work+'/probes');
 const probes=[['device32','win32','nexus_user-device-association.exe','6c978f3a6e1d1df7d0ebe995ce373f116d8e9b6159bb15eabffc0135101bd00f'],['close64','win64','nexus_taskqueue-close.exe','d8d29d64fe8e85ce7d687ca704a282f5c4c269c315001196b0c348f772ea1fd5'],['close32','win32','nexus_taskqueue-close.exe','8d3228735d3465311b0706ef67806aaa3003c7fb2247b98e67555bdf7fd998df']];
-for(const [label,abi,name,hash]of probes){
+if(!bootstrapOnly)for(const [label,abi,name,hash]of probes){
   const bytes=execFileSync('unzip',['-p',work+'/fixture.zip','nexus-fixtures/'+abi+'/bin/'+name],{maxBuffer:32*1024*1024});
   await fs.writeFile(work+'/probes/'+label+'.exe',bytes,{flag:'wx'});
   if(await fileHash(work+'/probes/'+label+'.exe')!==hash)throw Error('Wrong exact test fixture');
@@ -58,8 +59,9 @@ async function seed(source,destination){
 await seed(files+'/share/default_pfx_arm64',work+'/pfx');await fs.mkdir(work+'/pfx/dosdevices',{recursive:true});
 for(const [drive,target]of [['c:','../drive_c'],['z:','/']])try{await fs.symlink(target,work+'/pfx/dosdevices/'+drive);}catch(error){if(error.code!=='EEXIST')throw error;}
 const env=diagnosticEnvironment(files,work),wine=files+'/bin-arm64/wine',server=files+'/bin-arm64/wineserver';
-const report={schema:1,scope:'diagnostic only, different Proton revision with identical pinned Wine/XGameRuntime/FEX; not candidate approval',realGameTest:false,realAccountTest:false,realCloudTest:false,promotable:false,stableApproved:false,pins,engineGraph:manifest.sourceGraph,results:[]};
+const report={schema:1,scope:'diagnostic only, different Proton revision with identical pinned Wine/XGameRuntime/FEX; not candidate approval',mode:bootstrapOnly?'bootstrap-only':'full-context',originalFixturesUsed:!bootstrapOnly,realGameTest:false,realAccountTest:false,realCloudTest:false,promotable:false,stableApproved:false,pins,engineGraph:manifest.sourceGraph,results:[]};
 try{
+  if(!bootstrapOnly){
   // Match the failed component gate's fresh (not template-seeded) prefixes and
   // full execution order. Intercept only the two observed stalled probes.
   const script=execFileSync('tar',['-xJOf',work+'/engine-input/'+source,'source/wine/dlls/xgameruntime/scripts/test-component.mjs'],{timeout:120000,maxBuffer:4*1024*1024});
@@ -90,15 +92,24 @@ try{
       spawnSync(server,['-k'],{env:scoped,timeout:10000,stdio:'ignore'});spawnSync(server,['-w'],{env:scoped,timeout:10000,stdio:'ignore'});
     }
   }
+  }
   const boot=spawnSync(wine,['wineboot','-u'],{env,cwd:work,encoding:'utf8',timeout:60000});
   await fs.writeFile(work+'/boot.log',(boot.stdout||'')+(boot.stderr||''),{flag:'wx'});
   if(boot.status!==0||boot.error||boot.signal)throw Error('Private diagnostic prefix failed to boot');
-  for(const [label]of probes)for(let trial=0;trial<(label==='close32'?16:4);trial++){
+  if(!bootstrapOnly)for(const [label]of probes)for(let trial=0;trial<(label==='close32'?16:4);trial++){
     const stem=label+'-'+trial;
     const result=await diagnosticProbe(wine,[work+'/probes/'+label+'.exe'],{env:{...env,WINEDEBUG:'-all,+loaddll,+seh,err+sync,err+thread'},cwd:work+'/probes',log:work+'/'+stem+'.log',debugLog:work+'/'+stem+'-gdb.txt'});
     report.results.push({label,trial,...result,logSha256:await fileHash(work+'/'+stem+'.log')});
     console.log(JSON.stringify({label,trial,...result}));
     if(result.debugged||result.code!==0)break;
+  }
+  const bootstrap=fileURLToPath(new URL('./probes/wow64-thread-bootstrap.c',import.meta.url));
+  execFileSync('i686-w64-mingw32-gcc-posix',['-std=c11','-O2','-Wall','-Wextra','-Werror','-static','-Wl,--stack,2097152',bootstrap,'-o',work+'/probes/bootstrap.exe'],{env:{PATH:'/usr/bin:/bin',HOME:work+'/home',LC_ALL:'C.UTF-8'},timeout:60000,stdio:'inherit'});
+  report.bootstrap={sourceSha256:await fileHash(bootstrap),binarySha256:await fileHash(work+'/probes/bootstrap.exe'),distributionComponent:false};
+  for(const [label,args]of [['bootstrap-bare',[]],['bootstrap-xgr',['--load-runtime']]]){
+    const result=await diagnosticProbe(wine,[work+'/probes/bootstrap.exe',...args],{env:{...env,WINEDEBUG:'-all,+loaddll,+seh,err+sync,err+thread'},cwd:work+'/probes',log:work+'/'+label+'.log',debugLog:work+'/'+label+'-gdb.txt'});
+    report.results.push({label,...result,logSha256:await fileHash(work+'/'+label+'.log')});
+    console.log(JSON.stringify({label,...result}));
   }
   if(await treeHash(runtime)!==manifest.validation.treeSha256)throw Error('Diagnostic engine changed');
 }finally{
