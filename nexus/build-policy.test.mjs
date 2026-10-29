@@ -27,8 +27,18 @@ test('ARM64 builds one ARM64X C++ module through the same CMake rules',()=>{
   const source=fs.readFileSync(path.join(repository,'Makefile.in'),'utf8');
   assert.match(source,/rules-cmake,xgameruntime,arm64ec,windows/);
   assert.match(source,/XGAMERUNTIME_arm64ec_CMAKE_ARGS[^#]*-DCMAKE_INSTALL_LIBDIR=lib\/wine\/aarch64-windows/);
-  assert.equal((source.match(/ -marm64x"/g)||[]).length,3);
+  assert.equal((source.match(/ -marm64x"/g)||[]).length,5);
   assert.match(source,/module64: xgameruntime-x86_64-build \$\(if \$\(filter arm64ec-windows,\$\(ARCHS\)\),xgameruntime-arm64ec-build\)/);
+});
+test('ARM64 Wine links the pinned ARM64X and i386 vkd3d, not its bundled copy',()=>{
+  const source=fs.readFileSync(path.join(repository,'Makefile.in'),'utf8');
+  assert.match(source,/rules-autoconf,vkd3d,arm64ec,windows/);
+  assert.match(source,/VKD3D_arm64ec_AUTOCONF_ARGS = --host=aarch64-w64-mingw32/);
+  assert.match(source,/\$\(VKD3D_arm64ec_LIBDIR\)\/vkd3d\/aarch64-windows/);
+  const arm64=source.slice(source.indexOf('WINE_aarch64_AUTOCONF_ARGS +='));
+  assert.match(arm64,/VKD3D_PE_LIBS="-lvkd3d -lvkd3d-shader -lvkd3d-utils"/);
+  for(const flags of ['CROSSLDFLAGS="-L$(VKD3D_arm64ec_LIBDIR) ','aarch64_LDFLAGS="-L$(VKD3D_arm64ec_LIBDIR) ','i386_LDFLAGS="-L$(VKD3D_i386_LIBDIR) '])assert.ok(arm64.includes(flags),flags);
+  assert.match(arm64,/\.wine-aarch64-build: \$\(OBJ\)\/\.vkd3d-arm64ec-post-build \$\(OBJ\)\/\.vkd3d-i386-post-build/);
 });
 test('ARM64 candidate build also rejects a non-main CI invocation before touching inputs',()=>{
   const result=spawnSync(process.execPath,[path.join(project,'build-runtime.mjs'),'--arch','arm64','/missing-aux','/missing-work','/missing-output'],{env:{...process.env,GITHUB_REF:'refs/heads/feature/arm64'},encoding:'utf8'});
