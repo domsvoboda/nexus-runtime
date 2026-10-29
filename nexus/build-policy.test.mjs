@@ -37,8 +37,8 @@ test('ARM64 Wine links the pinned ARM64X and i386 vkd3d, not its bundled copy',(
   assert.match(source,/\$\(VKD3D_arm64ec_LIBDIR\)\/vkd3d\/aarch64-windows/);
   const arm64=source.slice(source.indexOf('WINE_aarch64_AUTOCONF_ARGS +='));
   assert.match(arm64,/VKD3D_PE_LIBS="-lvkd3d -lvkd3d-shader -lvkd3d-utils"/);
-  for(const flags of ['CROSSLDFLAGS="-L$(VKD3D_arm64ec_LIBDIR) ','aarch64_LDFLAGS="-L$(VKD3D_arm64ec_LIBDIR) ','i386_LDFLAGS="-L$(VKD3D_i386_LIBDIR) '])assert.ok(arm64.includes(flags),flags);
-  assert.match(arm64,/\.wine-aarch64-build: \$\(OBJ\)\/\.vkd3d-arm64ec-post-build \$\(OBJ\)\/\.vkd3d-i386-post-build/);
+  for(const flags of ['CROSSLDFLAGS="-L$(VKD3D_arm64ec_LIBDIR) ','aarch64_LDFLAGS="-L$(VKD3D_arm64ec_LIBDIR) ','i386_LDFLAGS="-L$(VKD3D_i386_LIBDIR) ','x86_64_LDFLAGS="-L$(VKD3D_x86_64_LIBDIR) '])assert.ok(arm64.includes(flags),flags);
+  assert.match(arm64,/\.wine-aarch64-build: \$\(OBJ\)\/\.vkd3d-arm64ec-post-build \$\(OBJ\)\/\.vkd3d-i386-post-build \$\(OBJ\)\/\.vkd3d-x86_64-post-build/);
 });
 test('ARM64 candidate build also rejects a non-main CI invocation before touching inputs',()=>{
   const result=spawnSync(process.execPath,[path.join(project,'build-runtime.mjs'),'--arch','arm64','/missing-aux','/missing-work','/missing-output'],{env:{...process.env,GITHUB_REF:'refs/heads/feature/arm64'},encoding:'utf8'});

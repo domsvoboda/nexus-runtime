@@ -862,9 +862,10 @@ $(OBJ)/.vkd3d-arm64ec-post-build: $(OBJ)/.wine-$(HOST_ARCH)-tools
 	cp $(VKD3D_arm64ec_DST)/bin/libvkd3d-utils-1.dll $(VKD3D_arm64ec_LIBDIR)/vkd3d/aarch64-windows
 	touch $@
 
-# One ARM64 Wine configure builds the ARM64X and i386 PE modules, so the import
-# library directory is per PE architecture: aarch64 links ARM64X, CROSSLDFLAGS
-# is arm64ec's default, i386 links the i386 build. The headers are shared.
+# One ARM64 Wine configure builds the ARM64X, i386 and x86_64 PE modules, so
+# the import library directory is per PE architecture: aarch64 links ARM64X,
+# CROSSLDFLAGS is arm64ec's default, i386 and x86_64 link their own builds.
+# The headers are shared.
 ifeq ($(TARGET_ARCH),arm64)
 WINE_aarch64_AUTOCONF_ARGS += \
   VKD3D_PE_CFLAGS="-I$(VULKAN_HEADERS_arm64ec_DST)/include -I$(VKD3D_arm64ec_DST)/include/vkd3d" \
@@ -872,9 +873,10 @@ WINE_aarch64_AUTOCONF_ARGS += \
 WINE_aarch64_ENV += \
   CROSSLDFLAGS="-L$(VKD3D_arm64ec_LIBDIR) $(WINE_aarch64-windows_LIBFLAGS) $(WINE_aarch64_LIBFLAGS) $(WINE_LDFLAGS) $(aarch64_LDFLAGS) $(LDFLAGS)" \
   aarch64_LDFLAGS="-L$(VKD3D_arm64ec_LIBDIR) $(WINE_aarch64_LIBFLAGS) $(WINE_LDFLAGS) $(aarch64_LDFLAGS) $(LDFLAGS)" \
-  i386_LDFLAGS="-L$(VKD3D_i386_LIBDIR) $(WINE_i386-windows_LIBFLAGS) $(WINE_i386_LIBFLAGS) $(WINE_LDFLAGS) $(i386_LDFLAGS) $(LDFLAGS)"
-$(OBJ)/.wine-aarch64-configure: $(OBJ)/.vkd3d-arm64ec-build $(OBJ)/.vkd3d-i386-build
-$(OBJ)/.wine-aarch64-build: $(OBJ)/.vkd3d-arm64ec-post-build $(OBJ)/.vkd3d-i386-post-build
+  i386_LDFLAGS="-L$(VKD3D_i386_LIBDIR) $(WINE_i386-windows_LIBFLAGS) $(WINE_i386_LIBFLAGS) $(WINE_LDFLAGS) $(i386_LDFLAGS) $(LDFLAGS)" \
+  x86_64_LDFLAGS="-L$(VKD3D_x86_64_LIBDIR) $(WINE_x86_64-windows_LIBFLAGS) $(WINE_x86_64_LIBFLAGS) $(WINE_LDFLAGS) $(x86_64_LDFLAGS) $(LDFLAGS)"
+$(OBJ)/.wine-aarch64-configure: $(OBJ)/.vkd3d-arm64ec-build $(OBJ)/.vkd3d-i386-build $(OBJ)/.vkd3d-x86_64-build
+$(OBJ)/.wine-aarch64-build: $(OBJ)/.vkd3d-arm64ec-post-build $(OBJ)/.vkd3d-i386-post-build $(OBJ)/.vkd3d-x86_64-post-build
 endif
 
 
