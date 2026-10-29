@@ -5,6 +5,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {project,repository} from './inputs.mjs';
+test('the binary distribution preserves the exact pinned FEX notice before native validation',()=>{
+  const assembly=fs.readFileSync(path.join(project,'assemble-runtime.mjs'),'utf8');
+  assert.ok(assembly.includes("fs.copyFile(path.join(source,'FEX/LICENSE'),path.join(notices,'FEX-LICENSE'),fs.constants.COPYFILE_EXCL)"));
+  const validation=fs.readFileSync(path.join(project,'ci/validate-runtime-arm64.mjs'),'utf8');
+  const check="fileHash(files+'/share/doc/nexus-runtime/FEX-LICENSE')!==await fileHash(built.source+'/FEX/LICENSE')";
+  assert.ok(validation.includes(check));
+  assert.ok(validation.indexOf(check)<validation.indexOf('treeSha256:await treeHash(runtime)'));
+});
 test('source CI cannot build or publish distribution candidates',()=>{
   const workflow=fs.readFileSync(path.join(repository,'.github/workflows/nexus-source.yml'),'utf8');
   assert.match(workflow,/node nexus\/check-source\.mjs/);
