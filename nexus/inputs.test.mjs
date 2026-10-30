@@ -5,7 +5,7 @@ import {validateInputs,verifyInputs,sourceEnvironment} from './inputs.mjs';
 const {inputs}=await verifyInputs();
 test('all SDK, auxiliary and shader inputs are immutable development sources',()=>{
     validateInputs(inputs);
-    for(const mutate of [x=>x.status='release',x=>x.sdk=x.sdk.split('@')[0]+':latest',x=>x.upstream.wine='latest',x=>delete x.modules.dxvk,x=>x.nghttp2.commit='main',x=>x.shader.file='../private.patch',x=>x.compatibilitySources['../private.c']='0'.repeat(64)]){
+    for(const mutate of [x=>x.status='release',x=>x.sdk=x.sdk.split('@')[0]+':latest',x=>x.sdkArm64=x.sdkArm64.split('@')[0]+':latest',x=>x.sdkArm64=x.sdk,x=>x.upstream.wine='latest',x=>delete x.modules.dxvk,x=>x.nghttp2.commit='main',x=>x.shader.file='../private.patch',x=>x.fex.commit='main',x=>x.fex.file='../private.patch',x=>x.fex.resultSha256='invalid',x=>x.compatibilitySources['../private.c']='0'.repeat(64)]){
         const copy=structuredClone(inputs);mutate(copy);assert.throws(()=>validateInputs(copy));
     }
 });

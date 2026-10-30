@@ -32,7 +32,7 @@ export async function assertPortable(runtime) {
     const file=path.join(directory,entry.name);
     if(entry.isDirectory())await visit(file);
     else if(entry.isSymbolicLink()){
-      if(path.relative(runtime,file)==='files/share/default_pfx/dosdevices/z:'&&await fs.readlink(file)==='/')continue;
+      if(['files/share/default_pfx/dosdevices/z:','files/share/default_pfx_arm64/dosdevices/z:'].includes(path.relative(runtime,file))&&await fs.readlink(file)==='/')continue;
       if(!(await fs.realpath(file)).startsWith(runtime+path.sep))throw Error('External runtime dependency: '+path.relative(runtime,file));
     }
   }}

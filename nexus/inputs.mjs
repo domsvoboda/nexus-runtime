@@ -22,6 +22,7 @@ export function validateInputs(inputs){
     if(inputs.schema!==1||inputs.status!=='development'||inputs.channel!=='experimental')throw Error('Only development Experimental inputs are accepted');
     if(!hash64(inputs.verifiedAuxiliaryManifestSha256))throw Error('Missing verified auxiliary manifest pin');
     if(!/^registry\.gitlab\.steamos\.cloud\/proton\/steamrt4\/sdk\/x86_64@sha256:[a-f0-9]{64}$/.test(inputs.sdk))throw Error('SDK must be pinned by digest');
+    if(!/^registry\.gitlab\.steamos\.cloud\/proton\/steamrt4\/sdk\/arm64-llvm@sha256:[a-f0-9]{64}$/.test(inputs.sdkArm64))throw Error('ARM64 SDK must be pinned by digest');
     for(const name of ['proton','wine','xgameruntime'])if(!hash40(inputs.upstream?.[name]))throw Error('Unpinned upstream '+name);
     if(Object.keys(inputs.modules||{}).sort().join(',')!=='dxvk,vkd3d,vkd3d-proton')throw Error('Missing graphics source pins');
     for(const value of Object.values(inputs.modules))if(!hash40(value))throw Error('Unpinned graphics source');
@@ -29,6 +30,7 @@ export function validateInputs(inputs){
     if(inputs.shader?.file!=='patches/wine-hlsl-state-keywords.patch'||!hash64(inputs.shader.sha256)||!/^\d+\.\d+$/.test(inputs.shader.version))throw Error('Unpinned shader integration');
     if(!inputs.shader.expectedSources||!Object.keys(inputs.shader.expectedSources).length)throw Error('Missing shader result checksums');
     for(const [name,value]of Object.entries(inputs.shader.expectedSources))if(!/^libs\/vkd3d-shader\/[a-z0-9.-]+$/.test(name)||!hash64(value))throw Error('Unsafe shader result input');
+    if(inputs.fex?.file!=='patches/fex-overcommit-release-order.patch'||!hash40(inputs.fex.commit)||![inputs.fex.sha256,inputs.fex.originalSha256,inputs.fex.resultSha256].every(hash64))throw Error('Unpinned FEX source correction');
     const files=inputs.compatibilitySources;
     if(!files||Object.keys(files).length!==6)throw Error('Missing compatibility sources');
     for(const [file,value]of Object.entries(files))if(!/^runtime-compat\/[a-z0-9.-]+$/.test(file)||!hash64(value))throw Error('Unsafe compatibility source');
@@ -39,6 +41,7 @@ export async function verifyInputs(){
     validateInputs(inputs);
     for(const [file,expected]of Object.entries(inputs.compatibilitySources))if(sha256(await fs.readFile(path.join(project,file)))!==expected)throw Error('Compatibility source mismatch: '+file);
     if(sha256(await fs.readFile(path.join(project,inputs.shader.file)))!==inputs.shader.sha256)throw Error('Shader patch mismatch');
+    if(sha256(await fs.readFile(path.join(project,inputs.fex.file)))!==inputs.fex.sha256)throw Error('FEX patch mismatch');
     return {inputs};
 }
 function git(cwd,args){return run('git',args,cwd,{capture:true}).trim();}
@@ -56,7 +59,8 @@ export async function verifySourceGraph({full=false,main=false}={}){
     if(git(repository,['status','--porcelain','--untracked-files=all']))throw Error('Proton source must be clean before preparation');
     const url=git(repository,['config','-f','.gitmodules','--get','submodule.wine.url']);
     if(url!=='https://github.com/domsvoboda/nexus-wine.git')throw Error('Wrong Wine fork');
-    const graph={proton:head,wine:gitlink(repository,'wine'),modules:{...inputs.modules}};
+    const graph={proton:head,wine:gitlink(repository,'wine'),fex:gitlink(repository,'FEX'),modules:{...inputs.modules}};
+    if(graph.fex!==inputs.fex.commit)throw Error('FEX source mismatch');
     for(const [name,expected]of Object.entries(inputs.modules))if(gitlink(repository,name)!==expected)throw Error('Graphics source mismatch: '+name);
     if(full){
         const lines=run('git',['submodule','status','--recursive'],repository,{capture:true}).trimEnd().split('\n');
