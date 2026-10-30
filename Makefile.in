@@ -288,7 +288,7 @@ GST_UGLY_MESON_ARGS := \
 	-Dasfdemux=enabled \
 	-Dgpl=disabled
 
-GST_UGLY_DEPENDS = gstreamer gst_base
+GST_UGLY_DEPENDS = gst_orc gstreamer gst_base
 
 $(eval $(call rules-source,gst_ugly,$(SRCDIR)/gstreamer/subprojects/gst-plugins-ugly/))
 $(eval $(call rules-meson,gst_ugly,i386,unix))
