@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   auxiliary:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[source-only]')
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
@@ -35,7 +35,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   runtime:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[source-only]')
     needs: auxiliary
     runs-on: ubuntu-24.04
     timeout-minutes: 360

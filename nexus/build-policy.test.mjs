@@ -60,7 +60,7 @@ test('ARM64 candidate workflow compiles only on main, including manual dispatch'
   const jobs=text.slice(text.indexOf('\njobs:\n')).split(/\n  (?=[a-z-]+:\n)/).slice(1);
   assert.equal(jobs.length,(text.match(/^    runs-on: /gm)||[]).length);
   assert.ok(jobs.length>=2);
-  for(const job of jobs)assert.match(job,/^[a-z-]+:\n    if: github\.ref == 'refs\/heads\/main'\n/);
+  for(const job of jobs)assert.ok(job.split('\n')[1]==="    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[source-only]')");
   assert.match(text,/node nexus\/build-auxiliary\.mjs --arch arm64 /);
   assert.match(text,/node nexus\/build-runtime\.mjs --arch arm64 /);
   assert.match(text,/runs-on: ubuntu-24\.04-arm/);
@@ -69,4 +69,18 @@ test('ARM64 workflow supplies the exact llvm-mingw archive and SHA-256',()=>{
   const text=fs.readFileSync(path.join(repository,'.github/workflows/nexus-runtime-arm64.yml'),'utf8');
   assert.match(text,/^  NEXUS_LLVM_MINGW_URL: https:\/\/github\.com\/mstorsjo\/llvm-mingw\/releases\/download\/(\d{8})\/llvm-mingw-\1-ucrt-ubuntu-22\.04-aarch64\.tar\.xz\n/m);
   assert.match(text,/^  NEXUS_LLVM_MINGW_SHA256: [a-f0-9]{64}\n/m);
+});
+
+test('source-only integrations never compile x64 or ARM64 candidates',()=>{
+  const guard="github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[source-only]')";
+  for(const file of ['nexus-runtime.yml','nexus-runtime-arm64.yml']){
+    const text=fs.readFileSync(path.join(repository,'.github/workflows',file),'utf8');
+    const jobs=text.slice(text.indexOf('\njobs:\n')).split(/\n  (?=[a-z-]+:\n)/).slice(1);
+    for(const job of jobs)assert.equal(job.split('\n')[1],'    if: '+guard);
+  }
+  for(const ref of ['refs/heads/main','refs/heads/develop','refs/pull/1/merge'])
+    for(const message of ['ordinary integration','[source-only] Integrate checked source']){
+      const run=ref==='refs/heads/main'&&!message.includes('[source-only]');
+      assert.equal(run,ref==='refs/heads/main'&&message==='ordinary integration');
+    }
 });
