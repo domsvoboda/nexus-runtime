@@ -89,3 +89,11 @@ test('module preflight and default prefix use the same two-ABI CMake install',()
         }
     }finally{fs.rmSync(dir,{recursive:true});}
 });
+test('release NDEBUG is added to, not in place of, the ARM64 module flags',()=>{
+    const flags=rules.split('\n').filter(line=>/^(ifeq|endif|XGAMERUNTIME_CFLAGS\b)/.test(line)).join('\n');
+    for(const [arch,expected]of [['arm64','-D_WIN32_WINNT=0x0A00 -DNDEBUG'],['x86_64','-DNDEBUG']]){
+        const result=spawnSync('make',['-s','-f','-'],{input:`TARGET_ARCH := ${arch}\n${flags}\nall:\n\t@echo '$(strip $(XGAMERUNTIME_CFLAGS))'\n`,encoding:'utf8',timeout:60000});
+        assert.equal(result.status,0,result.stdout+result.stderr);
+        assert.equal(result.stdout.trim(),expected);
+    }
+});
