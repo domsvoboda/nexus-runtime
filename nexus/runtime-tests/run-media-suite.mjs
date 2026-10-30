@@ -33,6 +33,6 @@ const probe = path.join(work, 'media-codecs-probe');
 const source = path.join(path.dirname(fileURLToPath(import.meta.url)), 'media-codecs-probe.c');
 execFileSync('gcc', ['-O2', '-Wall', source, '-o', probe, ...flags], { stdio: 'inherit' });
 const output = execFileSync(probe, [pluginDir], { env, encoding: 'utf8', timeout: 30_000 });
-if (!output.includes('Runtime H.264 and AAC GStreamer decoders are available.')) throw new Error('Runtime media probe did not pass.');
-await fs.writeFile(path.join(work, 'results.json'), JSON.stringify({ h264: true, aac: true, bundledLibraries: true }, null, 2) + '\n');
+if (!output.includes('Runtime H.264, AAC, ASF, WMV3 and WMA Pro GStreamer components are available.')) throw new Error('Runtime media probe did not pass.');
+await fs.writeFile(path.join(work, 'results.json'), JSON.stringify({ h264: true, aac: true, asf: true, wmv3: true, wmapro: true, bundledLibraries: true }, null, 2) + '\n');
 console.log(output.trim());
