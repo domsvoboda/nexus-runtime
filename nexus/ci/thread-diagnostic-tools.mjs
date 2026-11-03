@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: MIT
+import fs from 'node:fs';
+import path from 'node:path';
+import {spawn,spawnSync} from 'node:child_process';
+
+export function diagnosticEnvironment(files,work,input=process.env){
+  const env={PATH:files+'/bin-arm64:/usr/bin:/bin',HOME:work+'/home',WINEPREFIX:work+'/pfx',WINEARCH:'win64',WINEDEBUG:'-all,err+sync,err+thread',WINEDLLPATH:files+'/lib/vkd3d:'+files+'/lib/wine',WINEDLLOVERRIDES:'winemenubuilder.exe=d;mscoree,mshtml=d;xgameruntime=b',LD_LIBRARY_PATH:files+'/lib/aarch64-linux-gnu:'+files+'/lib',FEX_APP_CONFIG_LOCATION:work+'/fex/',LC_ALL:'C.UTF-8'};
+  for(const name of ['DISPLAY','XAUTHORITY'])if(input[name])env[name]=input[name];
+  return env;
+}
+
+function identity(pid){
+  try{return fs.readFileSync('/proc/'+pid+'/stat','utf8').split(') ').at(-1).split(' ')[19];}catch{return null;}
+}
+
+export async function diagnosticProbe(command,args,{env,cwd,log,debugLog,debugAfter=5000,timeout=45000,debugger:captureDebugger}={}){
+  if(!path.isAbsolute(log)||!path.isAbsolute(debugLog)||timeout<=debugAfter)throw Error('Invalid private diagnostic paths or limits');
+  const descriptor=fs.openSync(log,'wx',0o600),started=Date.now();
+  let bytes=0,truncated=false,debugged=false,debugStatus=null,timedOut=false;
+  const child=spawn(command,args,{cwd,env,stdio:['ignore','pipe','pipe']});
+  const birth=child.pid?identity(child.pid):null;
+  const append=data=>{if(bytes+data.length<=16*1024*1024){fs.writeSync(descriptor,data);bytes+=data.length;}else truncated=true;};
+  child.stdout.on('data',append);child.stderr.on('data',append);
+  const capture=setTimeout(()=>{
+    if(!birth||child.exitCode!==null||identity(child.pid)!==birth)return;
+    debugged=true;
+    // Native backtraces stop at Wine's syscall bridge. Read the pinned Wine
+    // TEB64 CpuReserved slot and I386_CONTEXT as well, without inferior calls.
+    // -c keeps native-only/64-bit threads with no WoW64 context non-fatal.
+    const result=captureDebugger?captureDebugger(child.pid):spawnSync('/usr/bin/gdb',['-q','-nx','-batch','-iex','set auto-load off','-iex','set debuginfod enabled off','-p',String(child.pid),'-ex','set pagination off','-ex','info threads','-ex','info sharedlibrary','-ex','thread apply all bt 32','-ex','thread apply all info registers','-ex','thread apply all -c x/24i $pc-16','-ex','thread apply all -c x/16gx $x18','-ex','thread apply all -c x/24gx $x18+0x1480','-ex','thread apply all -c x/52wx (*(unsigned long long*)($x18+0x1488))+4','-ex','thread apply all -c x/256wx *(unsigned int*)(*(unsigned long long*)($x18+0x1488)+0xc8)','-ex','x/64wx 0x408000','-ex','thread apply all -c x/8gx $x0','-ex','thread apply all -c x/24i $x19-16','-ex','thread apply all -c eval "x/%dgx $sp", ((*(unsigned long long*)($x18+8)>$sp && *(unsigned long long*)($x18+8)-$sp<16384) ? (*(unsigned long long*)($x18+8)-$sp)/8 : 32)','-ex','info proc mappings','-ex','detach'],{env,encoding:'utf8',timeout:20000,maxBuffer:8*1024*1024});
+    debugStatus=result.status??null;
+    fs.writeFileSync(debugLog,(result.stdout||'')+(result.stderr||'')+(result.error?'\nDEBUGGER ERROR '+result.error.message:'')+'\n',{flag:'wx',mode:0o600});
+  },debugAfter);
+  const limit=setTimeout(()=>{timedOut=true;if(child.exitCode===null&&identity(child.pid)===birth)child.kill('SIGKILL');},timeout);
+  try{
+    return await new Promise((resolve,reject)=>{
+      child.once('error',reject);
+      child.once('close',(code,signal)=>resolve({code,signal,timedOut,debugged,debugStatus,truncated,elapsedMs:Date.now()-started,pid:child.pid}));
+    });
+  }finally{clearTimeout(capture);clearTimeout(limit);fs.closeSync(descriptor);}
+}
