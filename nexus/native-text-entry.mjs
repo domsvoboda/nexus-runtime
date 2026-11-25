@@ -4,6 +4,10 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {peMachine} from './pe.mjs';
 
+// An unreasonable component is rejected, but the bound must fit real builds:
+// SDK #59 produces a 2,674,278-byte x86_64 and a 2,598,916-byte i386 bridge.
+const maxBridgeBytes=4*1024*1024;
+
 // Older pinned components without the optional helper remain unchanged. A
 // component that supplies Python must also supply its matching PE bridge.
 export async function stageNativeTextEntry(files, target) {
@@ -21,7 +25,7 @@ export async function stageNativeTextEntry(files, target) {
   const bridges=[];
   for(const item of targets){
     const bridge=await fs.readFile(path.join(files,'lib/wine',`${item.architecture}-windows`,'nexus-text-entry-host.exe'));
-    if(bridge.length>2*1024*1024||peMachine(bridge)!==item.architecture)throw new Error('Invalid native text-entry bridge architecture');
+    if(bridge.length>maxBridgeBytes||peMachine(bridge)!==item.architecture)throw new Error('Invalid native text-entry bridge size or architecture');
     bridges.push({...item,bridge});
   }
   const bridgeSha256={};

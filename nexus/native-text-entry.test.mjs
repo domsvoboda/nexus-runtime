@@ -65,3 +65,18 @@ test('a mislabelled bridge architecture is rejected before prefix writes',async 
   await assert.rejects(stageNativeTextEntry(root,target),/architecture/);
   await assert.rejects(fs.access(path.join(root,'share')));
 });
+
+test('the measured 2.6 MB SDK bridge is accepted and an excessive bridge rejected',async t=>{
+  const root=await fixture(t),source=path.join(root,'lib/wine/x86_64-windows');await fs.mkdir(source,{recursive:true});
+  await fs.writeFile(path.join(source,'nexus-text-entry.py'),'fixture');
+  const measured=2_674_278,bridge=Buffer.concat([pe('x86_64'),Buffer.alloc(measured-128,0x20)]);
+  await fs.writeFile(path.join(source,'nexus-text-entry-host.exe'),bridge);
+  const result=await stageNativeTextEntry(root,target);
+  const staged=path.join(root,'share/default_pfx/drive_c/windows/system32/nexus-text-entry-host.exe');
+  assert.equal((await fs.stat(staged)).size,measured);
+  assert.equal(result.bridgeSha256.x86_64,createHash('sha256').update(bridge).digest('hex'));
+  const excessive=Buffer.concat([pe('x86_64'),Buffer.alloc(4*1024*1024,0x20)]);
+  await fs.writeFile(path.join(source,'nexus-text-entry-host.exe'),excessive);
+  await assert.rejects(stageNativeTextEntry(root,target),/size|architecture/);
+  assert.equal((await fs.stat(staged)).size,measured);
+});
