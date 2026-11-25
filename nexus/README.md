@@ -60,3 +60,20 @@ pass. A different source commit requires a new build.
 
 Auxiliary dependencies are cached by their recipe, input locks, architecture and
 runner image. Restored dependencies are verified before use.
+
+## Native text-entry helper staging
+
+`nexus/native-text-entry.mjs` stages the Python helper and matching PE bridge
+from the built XGameRuntime directories into the default prefix, including the
+32-bit bridge for WOW64 where supported. Both files must be present when the
+optional helper is supplied. Their checksums and host GTK4/PyGObject requirements
+are recorded in metadata. Proton also copies these runtime-owned files into
+existing game prefixes, so a runtime update does not require recreating saves
+or installing the helper by hand. Updates touch only the two named files.
+Older pinned components without the helper retain their existing assembly.
+This packaging does not change the component source pin or claim that every
+architecture/game combination has been played. The companion component must be
+reviewed and pinned before a release can enable the feature.
+
+No compositor configuration is installed or modified. Optional focus rules
+belong in user configuration and must not name a particular monitor or machine.

@@ -985,6 +985,20 @@ class CompatData:
                 os.remove(old)
                 os.symlink(src=link, dst=old)
 
+    def copy_native_text_entry(self, tracked_files):
+        # These optional runtime-owned files are not Wine builtins. Refresh
+        # existing prefixes as well as new ones, including the WOW64 bridge.
+        default = os.path.join(g_proton.default_pfx_dir, "drive_c/windows")
+        for directory in ("system32", "syswow64"):
+            relative = "drive_c/windows/" + directory
+            source = os.path.join(default, directory)
+            if not os.path.isdir(os.path.join(self.prefix_dir, relative)):
+                continue
+            for name in ("nexus-text-entry.py", "nexus-text-entry-host.exe"):
+                if os.path.isfile(os.path.join(source, name)):
+                    try_copy(os.path.join(source, name), relative + "/" + name,
+                            prefix=self.prefix_dir, track_file=tracked_files)
+
     def setup_prefix(self):
         with self.prefix_lock:
             if file_exists(self.version_file, follow_symlinks=True):
@@ -1110,6 +1124,8 @@ class CompatData:
             self.create_fonts_symlinks()
 
             with open(self.tracked_files_file, "a") as tracked_files:
+                self.copy_native_text_entry(tracked_files)
+
                 #copy steam files into place
                 makedirs(self.prefix_dir + self.steam_in_pfx_dir)
                 filestocopy = [("steamclient.dll", "steamclient.dll"),
