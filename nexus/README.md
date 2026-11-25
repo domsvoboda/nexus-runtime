@@ -60,3 +60,36 @@ pass. A different source commit requires a new build.
 
 Auxiliary dependencies are cached by their recipe, input locks, architecture and
 runner image. Restored dependencies are verified before use.
+
+## Native text-entry helper staging
+
+`nexus/native-text-entry.mjs` stages the Python helper and matching PE bridge
+from the built XGameRuntime directories into the default prefix, including the
+32-bit bridge for WOW64 where supported. Both files must be present when the
+optional helper is supplied. Their checksums and host GTK4/PyGObject requirements
+are recorded in metadata. The bridge must match its PE architecture and stay
+within a documented 4 MiB ceiling; the measured SDK #59 bridges are 2,674,278
+bytes (x86_64) and 2,598,916 bytes (i386). Proton also copies these
+runtime-owned files into existing game prefixes, so a runtime update does not
+require recreating saves or installing the helper by hand. Updates touch only
+the two named files.
+The updater preflights both architecture directories and reads every source
+pair before its first write. It stages only a complete pair, ignores a prefix
+directory that resolves outside the prefix through a symlink, rejects two
+architecture directories that resolve to one physical directory or a
+destination that aliases a default source directory, and replaces destination
+files without unlinking them first. Previous entries, including absent files
+and symlinks, are staged beside their destinations before the first
+replacement and restored by rename if a replacement or the tracking write
+fails, so a filesystem that is still full during rollback does not need to
+recreate them; only entries that were absent are removed. Tracking is
+published only after the complete pair is committed, and staging uses private
+unique temporary names. A process crash between the two renames is not made
+atomic and is not claimed as crash-safe. Older pinned components without the
+helper retain their existing assembly.
+This packaging does not change the component source pin or claim that every
+architecture/game combination has been played. The companion component must be
+reviewed and pinned before a release can enable the feature.
+
+No compositor configuration is installed or modified. Optional focus rules
+belong in user configuration and must not name a particular monitor or machine.
